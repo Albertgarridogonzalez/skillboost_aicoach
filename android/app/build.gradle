@@ -1,0 +1,47 @@
+plugins {
+    id "com.android.application"
+    id "kotlin-android"
+    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
+    id "dev.flutter.flutter-gradle-plugin"
+}
+
+android {
+    namespace = "com.example.skillboost_aicoach"
+    compileSdk = 35  // Updated to SDK 35
+    ndkVersion = "25.2.9519653"
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
+    defaultConfig {
+        applicationId = "com.example.skillboost_aicoach"
+        minSdkVersion 24  // Updated to SDK 24
+        targetSdkVersion 34  // You can keep this at 34 or update to 35 if needed
+        versionCode 1
+        versionName "1.0"
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.debug
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+
+}
+dependencies {
+    // Se añade la dependencia para incluir las clases de TensorFlow Lite GPU y evitar errores de R8.
+    implementation 'org.tensorflow:tensorflow-lite-gpu:2.11.0'
+}
+
+flutter {
+    source = "../.."
+}
