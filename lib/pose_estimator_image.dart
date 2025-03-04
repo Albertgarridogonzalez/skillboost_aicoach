@@ -4,8 +4,6 @@ import 'dart:math' as math;
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:image/image.dart' as img;
 
-import 'drawing_utils.dart'; // Ajusta la ruta si está en otro directorio
-
 class PoseEstimatorimage {
   static Interpreter? _interpreter;
   static TensorType? _inputType;
@@ -15,11 +13,9 @@ class PoseEstimatorimage {
   /// Inicializa el intérprete una sola vez
   static Future<void> _initInterpreter() async {
     if (_interpreter == null) {
-      // Carga tu modelo .tflite según corresponda
       _interpreter = await Interpreter.fromAsset(
         'assets/models/singlepose_thunder_float16.tflite',
       );
-
       _inputType = _interpreter!.getInputTensor(0).type;
       print("Tipo de entrada del tensor: $_inputType");
 
@@ -30,51 +26,51 @@ class PoseEstimatorimage {
     }
   }
 
-  /// NUEVO MÉTODO:
-  /// 1) Lee el File de imagen.
-  /// 2) Decodifica y aplica bakeOrientation para que quede físicamente derecha.
-  /// 3) Corre la inferencia y obtiene la pose (coordenadas en la imagen reorientada).
-  /// 4) Dibuja la pose sobre esa misma imagen reorientada.
-  /// 5) Devuelve los bytes anotados (Uint8List) listos para mostrar en un Image.memory(...).
-  static Future<Uint8List?> estimatePoseAndAnnotateFromFile(File file) async {
+  /// Lee el File, hornea la orientación EXIF en los píxeles (bakeOrientation),
+  /// corre la inferencia y devuelve:
+  /// {
+  ///   'image': img.Image (ya físicamente en la orientación correcta),
+  ///   'pose': { 'nose':{'x':..,'y':..,'score':..}, ... },
+  ///   'width': int,
+  ///   'height': int
+  /// }
+  static Future<Map<String, dynamic>?> detectPoseOnOrientedImage(File file) async {
     await _initInterpreter();
     if (_interpreter == null) return null;
 
     // 1) Leer bytes y decodificar
-    final originalBytes = await file.readAsBytes();
-    final decoded = img.decodeImage(originalBytes);
+    final bytes = await file.readAsBytes();
+    final decoded = img.decodeImage(bytes);
     if (decoded == null) return null;
 
-    // 2) Reorientar físicamente (bakeOrientation)
+    // 2) Hornear la orientación: gira físicamente la imagen si el EXIF dice que está rotada
     final oriented = img.bakeOrientation(decoded);
-    print("Oriented image size: ${oriented.width}x${oriented.height}");
+    print("Oriented image: ${oriented.width} x ${oriented.height} (bakeOrientation aplicado)");
+    final origW = oriented.width;
+    final origH = oriented.height;
+    print("Oriented image: $origW x $origH (bakeOrientation aplicado)");
 
-    // 3) Inference: letterbox, buildInput, run...
-    //    Obtenemos la pose en coordenadas de la imagen reorientada
-    final poseMap = _estimatePoseFromImage(oriented);
-    if (poseMap == null) {
-      print("No pose detected or error in inference.");
-      return null;
-    }
+    // 3) Corre la inferencia (letterbox + run) sobre la imagen ya reorientada
+    final poseMap = _runInferenceOnImage(oriented);
+    if (poseMap == null) return null;
 
-    // 4) Dibujar la pose sobre la imagen reorientada
-    //    - Re-encode oriented en bytes
-    final orientedBytes = Uint8List.fromList(img.encodeJpg(oriented));
-    final annotated = await DrawingUtils.annotateImage(
-      orientedBytes,
-      poseMap, // no hay pose de referencia
-      null,
-    );
-    return annotated;
+    // Devolvemos la imagen reorientada y la pose
+    return {
+      'image': oriented,
+      'pose': poseMap,
+      'width': origW,
+      'height': origH,
+    };
   }
 
-  /// Inferencia "interna": dada una [img.Image] ya reorientada,
-  /// corre el letterbox + run + remapeo y devuelve un Map con las coords.
-  static Map<String, Map<String, double>>? _estimatePoseFromImage(img.Image oriented) {
+  /// Hace la inferencia en la imagen reorientada: letterbox, buildInput, run, remap coords
+  static Map<String, Map<String, double>>? _runInferenceOnImage(img.Image oriented) {
+    if (_interpreter == null) return null;
+
     final origW = oriented.width;
     final origH = oriented.height;
 
-    // 1) Obtener dims de entrada
+    // 1) Input shape
     final inputShape = _interpreter!.getInputTensor(0).shape;
     final targetH = inputShape[1];
     final targetW = inputShape[2];
@@ -101,9 +97,8 @@ class PoseEstimatorimage {
       ),
     );
 
-    // 5) Run inference
+    // 5) Run
     _interpreter!.run(inputTensor, output);
-    //print("Raw output: $output");
 
     // 6) Keypoint names
     final keypointNames = [
@@ -115,14 +110,13 @@ class PoseEstimatorimage {
 
     // 7) Remap coords
     final poseMap = <String, Map<String, double>>{};
-
     for (int i = 0; i < keypointNames.length; i++) {
       final xNorm = output[0][0][i][0];
       final yNorm = output[0][0][i][1];
       final score = output[0][0][i][2];
 
       if (score < scoreThreshold) {
-        // descartar si quieres
+        // filtrar si quieres
       }
 
       final px = xNorm * targetW;
@@ -131,7 +125,6 @@ class PoseEstimatorimage {
       double finalX = (px - offsetX) / ratio;
       double finalY = (py - offsetY) / ratio;
 
-      // clamp
       if (finalX < 0) finalX = 0;
       if (finalX > origW - 1) finalX = (origW - 1).toDouble();
       if (finalY < 0) finalY = 0;
@@ -144,11 +137,10 @@ class PoseEstimatorimage {
       };
     }
 
-    //print("Pose: $poseMap");
     return poseMap;
   }
 
-  /// Letterbox
+  /// Aplica letterbox a la imagen [src] para adaptarla al tamaño [targetW, targetH].
   static Map<String, dynamic> _letterboxAndResize(
       img.Image src, int targetW, int targetH) {
     final origW = src.width;
@@ -159,7 +151,7 @@ class PoseEstimatorimage {
 
     final letterbox = img.Image(width: targetW, height: targetH);
 
-    // fill black
+    // Rellenar con negro
     for (int y = 0; y < targetH; y++) {
       for (int x = 0; x < targetW; x++) {
         letterbox.setPixel(x, y, img.ColorRgb8(0, 0, 0));
@@ -186,7 +178,8 @@ class PoseEstimatorimage {
     };
   }
 
-  /// Construye el tensor 4D [1, targetH, targetW, 3]
+  /// Construye el tensor de entrada [1, targetH, targetW, 3].
+  /// Si es uint8 => [0..255], si es float => [0..1].
   static dynamic _buildInput(img.Image letterboxImage, int targetW, int targetH) {
     if (_inputType == TensorType.uint8) {
       return [
@@ -202,7 +195,7 @@ class PoseEstimatorimage {
         )
       ];
     } else {
-      // float => normalizamos [0..1]
+      // float => normalizamos
       return [
         List.generate(
           targetH,

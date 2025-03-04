@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'video_picker_screen.dart';
-import 'image_picker_screen.dart';
+//import 'image_picker_screen.dart';
 // Importa la nueva pantalla de pruebas
 import 'test_single_image_screen.dart';
 
