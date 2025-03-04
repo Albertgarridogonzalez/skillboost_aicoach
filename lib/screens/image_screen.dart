@@ -10,14 +10,14 @@ import 'package:image/image.dart' as img;
 
 import '../pose_estimator_image.dart';
 
-class TestSingleImageScreen extends StatefulWidget {
-  const TestSingleImageScreen({Key? key}) : super(key: key);
+class ImageScreen extends StatefulWidget {
+  const ImageScreen({Key? key}) : super(key: key);
 
   @override
   _TestSingleImageScreenState createState() => _TestSingleImageScreenState();
 }
 
-class _TestSingleImageScreenState extends State<TestSingleImageScreen> {
+class _TestSingleImageScreenState extends State<ImageScreen> {
   Uint8List? orientedBytes;
   Map<String, Map<String, double>>? poseMap;
   int origWidth = 0;
