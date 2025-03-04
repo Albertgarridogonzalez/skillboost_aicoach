@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
 import '../video_processor.dart';
+import '../pose_estimator.dart';
 import 'result_preview_screen.dart';
 
 class VideoPickerScreen extends StatefulWidget {
@@ -15,6 +16,7 @@ class VideoPickerScreen extends StatefulWidget {
 
 class _VideoPickerScreenState extends State<VideoPickerScreen> {
   File? _selectedVideo;
+  File? _referenceVideo;
   VideoPlayerController? _videoController;
   bool _isProcessing = false;
   String _progressMessage = "";
@@ -26,13 +28,18 @@ class _VideoPickerScreenState extends State<VideoPickerScreen> {
     super.dispose();
   }
 
-  Future<void> _pickVideo() async {
+  Future<void> _pickVideo({bool isReference = false}) async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.video,
     );
     if (result != null && result.files.isNotEmpty) {
       setState(() {
-        _selectedVideo = File(result.files.single.path!);
+        if (isReference) {
+          _referenceVideo = File(result.files.single.path!);
+          _loadReferenceVideo();
+        } else {
+          _selectedVideo = File(result.files.single.path!);
+        }
       });
       _initializeVideoPlayer();
     }
@@ -46,6 +53,22 @@ class _VideoPickerScreenState extends State<VideoPickerScreen> {
       })
       ..setLooping(true);
     _videoController?.play();
+  }
+
+  Future<void> _loadReferenceVideo() async {
+    if (_referenceVideo == null) return;
+    setState(() {
+      _progressMessage = "Cargando referencia...";
+    });
+
+    try {
+      await PoseEstimator.loadReferencePoses(_referenceVideo!.path);
+      setState(() {
+        _progressMessage = "Referencia cargada con éxito.";
+      });
+    } catch (e) {
+      _showErrorDialog("Error al cargar la referencia: $e");
+    }
   }
 
   Future<void> _processVideo() async {
@@ -71,7 +94,7 @@ class _VideoPickerScreenState extends State<VideoPickerScreen> {
         _isProcessing = false;
       });
 
-      if (annotatedVideoPath != null && File(annotatedVideoPath).existsSync()) {
+      if (annotatedVideoPath.isNotEmpty && File(annotatedVideoPath).existsSync()) {
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -93,7 +116,7 @@ class _VideoPickerScreenState extends State<VideoPickerScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text("Error en el procesamiento"),
+        title: Text("Error"),
         content: Text(message),
         actions: [
           TextButton(
@@ -116,14 +139,14 @@ class _VideoPickerScreenState extends State<VideoPickerScreen> {
           children: [
             if (_selectedVideo != null && _videoController?.value.isInitialized == true)
               SizedBox(
-                height: 300, // Video más grande
+                height: 300,
                 child: AspectRatio(
                   aspectRatio: _videoController!.value.aspectRatio,
                   child: VideoPlayer(_videoController!),
                 ),
               ),
             SizedBox(height: 20),
-            if (_isProcessing)
+            if (_progressMessage.isNotEmpty)
               Column(
                 children: [
                   LinearProgressIndicator(value: _progressValue),
@@ -136,6 +159,10 @@ class _VideoPickerScreenState extends State<VideoPickerScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 ElevatedButton(
+                  onPressed: () => _pickVideo(isReference: true),
+                  child: Text('Cargar Referencia'),
+                ),
+                ElevatedButton(
                   onPressed: _pickVideo,
                   child: Text('Elegir Video'),
                 ),
@@ -144,7 +171,7 @@ class _VideoPickerScreenState extends State<VideoPickerScreen> {
                   child: Text('Procesar Video'),
                 ),
               ],
-            )
+            ),
           ],
         ),
       ),

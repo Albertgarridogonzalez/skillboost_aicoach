@@ -17,6 +17,9 @@ Future<void> _requestPermissions() async {
     if (await Permission.videos.isDenied) {
       await Permission.videos.request();
     }
+     if (await Permission.photos.isDenied) {
+      await Permission.photos.request();
+    }
     // Para Android 10 y anteriores, se solicita storage
     if (await Permission.storage.isDenied) {
       await Permission.storage.request();

@@ -45,6 +45,7 @@ dependencies:
   ffmpeg_kit_flutter_min_gpl: ^6.0.3
   file_saver: ^0.2.14
   saver_gallery: ^4.0.1
+  image_picker: ^1.1.2
   
 
 dev_dependencies:
@@ -70,6 +71,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/models/pose_model.tflite
+    - assets/models/singlepose_thunder_float16.tflite
 
 
   # To add assets to your application, add an assets section, like this:
