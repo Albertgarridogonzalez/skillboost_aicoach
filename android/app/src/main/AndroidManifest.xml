@@ -1,7 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.example.skillboost_aicoach">
 
-    <!-- Permisos para Android 13 (SDK 33) -->
+    <!-- Permisos para Android 13+ -->
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/>
@@ -11,15 +11,16 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="29"/>
 
-    <!-- Opcional: Para Android 11+ si necesitas acceso amplio a almacenamiento -->
+    <!-- Para Android 11+ (acceso completo a almacenamiento externo) -->
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>
+    
 
     <application
         android:label="skillboost_aicoach"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:requestLegacyExternalStorage="true">
-        
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -40,6 +41,17 @@
             </intent-filter>
         </activity>
 
+        <!-- Proveedor para acceso a almacenamiento (Android 10+) -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.provider"
+            android:grantUriPermissions="true"
+            android:exported="false">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
         <!-- Meta-datos para Flutter -->
         <meta-data
             android:name="flutterEmbedding"
@@ -53,5 +65,4 @@
             <data android:mimeType="text/plain"/>
         </intent>
     </queries>
-
 </manifest>

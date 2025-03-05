@@ -46,6 +46,8 @@ dependencies:
   file_saver: ^0.2.14
   saver_gallery: ^4.0.1
   image_picker: ^1.1.2
+  device_info_plus: ^11.3.0
+  
   
 
 dev_dependencies:

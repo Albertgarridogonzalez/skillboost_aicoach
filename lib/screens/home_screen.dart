@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:skillboost_aicoach/checkstorage.dart';
 import 'package:skillboost_aicoach/screens/compare_poses_screen.dart';
 import 'video_picker_screen.dart';
 //import 'image_picker_screen.dart';
@@ -38,13 +39,19 @@ class HomeScreen extends StatelessWidget {
             SizedBox(height: 20),
             // NUEVO BOTÓN: Test de pose en una sola imagen
             ElevatedButton(
-              onPressed: () {
+              onPressed: () async {
+                bool permisoConcedido = await checkStoragePermission(context);
+              if (permisoConcedido) {
+                print("✅ Permiso listo para usar almacenamiento.");
+              } else {
+                print("❌ Permiso denegado.");
+              }
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (context) => ComparePosesScreen()),
                 );
               },
-              child: Text('Analizador de iamgen'),
+              child: Text('Analizador de imagen'),
             ),
           ],
         ),
