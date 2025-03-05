@@ -9,8 +9,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
-import '../image_downloader.dart';
-//import 'package:image_gallery_saver/image_gallery_saver.dart';
+
+// Importa tu modelo o clase de detección de pose
 import '../pose_estimator_image.dart';
 
 class ComparePosesScreen extends StatefulWidget {
@@ -21,24 +21,21 @@ class ComparePosesScreen extends StatefulWidget {
 }
 
 class _ComparePosesScreenState extends State<ComparePosesScreen> {
-  // Datos de la imagen de referencia
+  // Imagen y pose de referencia
   Uint8List? _refBytes;
   Map<String, Map<String, double>>? _refPose;
   int _refWidth = 0;
   int _refHeight = 0;
 
-  // Datos de la imagen a analizar
+  // Imagen y pose a analizar
   Uint8List? _analysisBytes;
   Map<String, Map<String, double>>? _analysisPose;
   int _analysisWidth = 0;
   int _analysisHeight = 0;
 
-  // Colores para cada grupo
-  Color _refColor = Colors.green; // Pose de referencia
-  Color _analysisColor = Colors.red; // Pose de análisis
-
-  // Keypoint de anclaje para alinear las poses (por ejemplo, 'leftWrist')
-  final String _anchorKeypoint = 'rightWrist';
+  // Colores para las poses
+  Color _refColor = Colors.green;
+  Color _analysisColor = Colors.red;
 
   @override
   Widget build(BuildContext context) {
@@ -62,7 +59,7 @@ class _ComparePosesScreenState extends State<ComparePosesScreen> {
     );
   }
 
-  // --- Botones para seleccionar imágenes ---
+  // Botones para seleccionar imágenes
   Widget _buildButtonsRow() {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -80,7 +77,7 @@ class _ComparePosesScreenState extends State<ComparePosesScreen> {
     );
   }
 
-  // --- Cuerpo: muestra la imagen de análisis con ambas poses sobrepuesta ---
+  // Cuerpo: muestra la imagen de análisis con ambas poses sobrepuestas
   Widget _buildBody() {
     if (_analysisBytes == null || _analysisPose == null) {
       return Center(child: Text('No se ha seleccionado imagen a analizar'));
@@ -106,13 +103,10 @@ class _ComparePosesScreenState extends State<ComparePosesScreen> {
               refHeight: _refHeight.toDouble(),
               refColor: _refColor,
               analysisColor: _analysisColor,
-              anchorKeypoint: _anchorKeypoint,
               fitContain: true,
-              rotationDeg: -90, // Ajusta según sea necesario
+              rotationDeg: -90,
               flipH: true,
               flipV: false,
-              angleTextColor:
-                  Colors.yellow, // Por ejemplo, para el texto de ángulos
             ),
             size: Size(
               MediaQuery.of(context).size.width,
@@ -124,7 +118,7 @@ class _ComparePosesScreenState extends State<ComparePosesScreen> {
     );
   }
 
-  // --- Dos color pickers ---
+  // Dos color pickers
   Widget _buildColorPickers() {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -215,77 +209,18 @@ class _ComparePosesScreenState extends State<ComparePosesScreen> {
     );
   }
 
-  Future<Directory> _getDownloadDirectory() async {
-    final Directory? extDir = await getExternalStorageDirectory();
-    if (extDir == null)
-      throw Exception("No se pudo obtener el almacenamiento externo");
-    // Extraer la parte de la ruta hasta 'Android'
-    final List<String> paths = extDir.path.split("/");
-    String newPath = "";
-    for (int i = 1; i < paths.length; i++) {
-      if (paths[i] == "Android") break;
-      newPath += "/${paths[i]}";
-    }
-    // Agregamos la carpeta de descargas
-    newPath = "$newPath/Download";
-    return Directory(newPath);
-  }
-  Future<Uint8List> _uiImageToPng(ui.Image image) async {
-  final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-  return byteData!.buffer.asUint8List();
-}
-Future<bool> _requestStoragePermission() async {
-  PermissionStatus status = await Permission.storage.status;
-
-  // Si el permiso está denegado, solicitarlo
-  if (status.isDenied || status.isRestricted) {
-    status = await Permission.storage.request();
-    //await openAppSettings();
-  }
-
-  // Si está denegado permanentemente, abrir configuración
-  if (status.isPermanentlyDenied) {
-    print("⚠️ Permiso de almacenamiento denegado permanentemente. Abriendo configuración...");
-    await openAppSettings();
-    return false;
-  }
-
-  // Verificar si se concedió el permiso
-  if (status.isGranted) {
-    print("✅ Permiso de almacenamiento concedido.");
-    return true;
-  } else {
-    print("❌ Permiso de almacenamiento no concedido.");
-    return false;
-  }
-}
-
-
-  // --- Botón Descargar: reconstruye la imagen final y la guarda en Downloads ---
-   Future<void> _onDownloadPressed() async {
-    
-    // Solicita permisos antes de proceder
-    //bool hasPermission = await _requestStoragePermission();
-    //if (!hasPermission) {
-    //  ScaffoldMessenger.of(context).showSnackBar(
-    //    SnackBar(content: Text('Permiso de almacenamiento denegado')),
-    //  );
-    //  return;
-    //}
-
+  Future<void> _onDownloadPressed() async {
     try {
       final recordedImage = await _buildAnnotatedImage();
       final pngBytes = await _uiImageToPng(recordedImage);
-      
-      // Usamos la función que construye la ruta deseada o una ruta fija
-      final directory = await _getDownloadDirectory(); // o usa una ruta fija si lo prefieres
+
+      final directory = await _getDownloadDirectory();
       final path = directory.path;
-      print("Guardando en: $path");
-      
-      final fileName = 'pose_comparison_${DateTime.now().millisecondsSinceEpoch}.png';
+      final fileName =
+          'pose_comparison_${DateTime.now().millisecondsSinceEpoch}.png';
       final file = File('$path/$fileName');
       await file.writeAsBytes(pngBytes);
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Imagen guardada en $fileName')),
       );
@@ -299,20 +234,16 @@ Future<bool> _requestStoragePermission() async {
 
   Future<ui.Image> _buildAnnotatedImage() async {
     final uiImage = await _decodeToUiImage(_analysisBytes!);
-
-    // Definimos un extra de altura para el bloque de texto (por ejemplo, 150 px)
     final extraHeight = 150;
     final finalWidth = _analysisWidth.toDouble();
     final finalHeight = _analysisHeight.toDouble() + extraHeight;
 
-    // Creamos un PictureRecorder con la nueva altura
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(
       recorder,
       Rect.fromLTWH(0, 0, finalWidth, finalHeight),
     );
 
-    // Dibujamos la imagen de análisis con las poses en la parte superior (1:1)
     final painter = ComparePosesPainter(
       analysisImage: uiImage,
       analysisPose: _analysisPose!,
@@ -323,138 +254,37 @@ Future<bool> _requestStoragePermission() async {
       refHeight: _refHeight.toDouble(),
       refColor: _refColor,
       analysisColor: _analysisColor,
-      anchorKeypoint: _anchorKeypoint,
-      fitContain: false, // Dibujar 1:1
-      rotationDeg: -90,
-      flipH: true,
+      fitContain: false,
+      rotationDeg: 0,
+      flipH: false,
       flipV: false,
-      angleTextColor: Colors.yellow,
     );
-    painter.paint(
-        canvas, Size(_analysisWidth.toDouble(), _analysisHeight.toDouble()));
-
-    // Calculamos los ángulos para ambas poses (si existen)
-    final analysisAngles =
-        _analysisPose != null ? computePoseAngles(_analysisPose!) : {};
-    final refAngles = _refPose != null ? computePoseAngles(_refPose!) : {};
-
-    // Construimos el texto a mostrar en el bloque inferior.
-    // Por ejemplo, mostramos ángulos para "Rodilla Derecha", "Rodilla Izquierda", "Cadera Derecha", "Cadera Izquierda".
-    // Puedes modificar los keypoints y el formato según necesites.
-    String text = '';
-    if (refAngles.isNotEmpty) {
-      text += 'Referencia:\n';
-      refAngles.forEach((key, value) {
-        text += '$key: ${value.toStringAsFixed(1)}°\n';
-      });
-    }
-    if (analysisAngles.isNotEmpty) {
-      text += '\nAnálisis:\n';
-      analysisAngles.forEach((key, value) {
-        text += '$key: ${value.toStringAsFixed(1)}°\n';
-      });
-    }
-
-    // Configuramos el estilo del texto (en negrita, mayor tamaño y con el color configurado)
-    final paragraphStyle = ui.ParagraphStyle(
-      textAlign: TextAlign.left,
-    );
-    final textStyle = ui.TextStyle(
-      color: Colors.yellow,
-      fontSize: 18,
-      fontWeight: FontWeight.bold,
-    );
-    final paragraphBuilder = ui.ParagraphBuilder(paragraphStyle)
-      ..pushStyle(textStyle)
-      ..addText(text);
-    final paragraph = paragraphBuilder.build();
-    // Ajustamos el ancho del párrafo al ancho de la imagen
-    paragraph.layout(ui.ParagraphConstraints(width: finalWidth));
-
-    // Dibujamos el párrafo en la parte inferior del canvas.
-    // Por ejemplo, en la posición (0, _analysisHeight + 10)
-    canvas.drawParagraph(
-        paragraph, Offset(10, _analysisHeight.toDouble() + 10));
+    painter.paint(canvas, Size(finalWidth, _analysisHeight.toDouble()));
 
     final picture = recorder.endRecording();
     return picture.toImage(finalWidth.toInt(), finalHeight.toInt());
   }
 
-  /// Función auxiliar para calcular algunos ángulos de interés de una pose.
-  /// Devuelve un Map con nombres de ángulos y sus valores en grados.
-  Map<String, double> computePoseAngles(Map<String, Map<String, double>> pose) {
-    Map<String, double> angles = {};
-
-    // Ejemplo: Rodilla izquierda: ángulo entre leftHip, leftKnee, leftAnkle.
-    if (pose.containsKey('leftHip') &&
-        pose.containsKey('leftKnee') &&
-        pose.containsKey('leftAnkle')) {
-      final angleLeftKnee = computeAngle(
-        Offset(pose['leftHip']!['x']!, pose['leftHip']!['y']!),
-        Offset(pose['leftKnee']!['x']!, pose['leftKnee']!['y']!),
-        Offset(pose['leftAnkle']!['x']!, pose['leftAnkle']!['y']!),
-      );
-      angles['Rodilla Izquierda'] = angleLeftKnee;
+  Future<Directory> _getDownloadDirectory() async {
+    final Directory? extDir = await getExternalStorageDirectory();
+    if (extDir == null) {
+      throw Exception("No se pudo obtener el almacenamiento externo");
     }
-    // Ejemplo: Rodilla derecha: ángulo entre rightHip, rightKnee, rightAnkle.
-    if (pose.containsKey('rightHip') &&
-        pose.containsKey('rightKnee') &&
-        pose.containsKey('rightAnkle')) {
-      final angleRightKnee = computeAngle(
-        Offset(pose['rightHip']!['x']!, pose['rightHip']!['y']!),
-        Offset(pose['rightKnee']!['x']!, pose['rightKnee']!['y']!),
-        Offset(pose['rightAnkle']!['x']!, pose['rightAnkle']!['y']!),
-      );
-      angles['Rodilla Derecha'] = angleRightKnee;
+    final List<String> paths = extDir.path.split("/");
+    String newPath = "";
+    for (int i = 1; i < paths.length; i++) {
+      if (paths[i] == "Android") break;
+      newPath += "/${paths[i]}";
     }
-    // Ejemplo: Cadera izquierda: ángulo entre leftShoulder, leftHip, leftKnee.
-    if (pose.containsKey('leftShoulder') &&
-        pose.containsKey('leftHip') &&
-        pose.containsKey('leftKnee')) {
-      final angleLeftHip = computeAngle(
-        Offset(pose['leftShoulder']!['x']!, pose['leftShoulder']!['y']!),
-        Offset(pose['leftHip']!['x']!, pose['leftHip']!['y']!),
-        Offset(pose['leftKnee']!['x']!, pose['leftKnee']!['y']!),
-      );
-      angles['Cadera Izquierda'] = angleLeftHip;
-    }
-    // Ejemplo: Cadera derecha: ángulo entre rightShoulder, rightHip, rightKnee.
-    if (pose.containsKey('rightShoulder') &&
-        pose.containsKey('rightHip') &&
-        pose.containsKey('rightKnee')) {
-      final angleRightHip = computeAngle(
-        Offset(pose['rightShoulder']!['x']!, pose['rightShoulder']!['y']!),
-        Offset(pose['rightHip']!['x']!, pose['rightHip']!['y']!),
-        Offset(pose['rightKnee']!['x']!, pose['rightKnee']!['y']!),
-      );
-      angles['Cadera Derecha'] = angleRightHip;
-    }
-    return angles;
+    newPath = "$newPath/Download";
+    return Directory(newPath);
   }
 
-  /// Función auxiliar para calcular el ángulo entre tres puntos A, B (vértice) y C.
-  double computeAngle(Offset A, Offset B, Offset C) {
-    final BA = A - B;
-    final BC = C - B;
-    final dot = BA.dx * BC.dx + BA.dy * BC.dy;
-    final magBA = BA.distance;
-    final magBC = BC.distance;
-    if (magBA == 0 || magBC == 0) return 0.0;
-    final cosAngle = dot / (magBA * magBC);
-    final clamped = cosAngle.clamp(-1.0, 1.0);
-    final angleRad = math.acos(clamped);
-    return angleRad * 180 / math.pi;
+  Future<Uint8List> _uiImageToPng(ui.Image image) async {
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+    return byteData!.buffer.asUint8List();
   }
 
-  Future<ui.Image> _decodeToUiImage(Uint8List bytes) async {
-    final completer = Completer<ui.Image>();
-    ui.decodeImageFromList(bytes, (ui.Image img) {
-      completer.complete(img);
-    });
-    return completer.future;
-  }
-
-  // --- Seleccionar Imagen de Referencia ---
   Future<void> _pickReferenceImage() async {
     final picker = ImagePicker();
     final picked = await picker.pickImage(source: ImageSource.gallery);
@@ -476,7 +306,6 @@ Future<bool> _requestStoragePermission() async {
     });
   }
 
-  // --- Seleccionar Imagen a Analizar ---
   Future<void> _pickAnalysisImage() async {
     final picker = ImagePicker();
     final picked = await picker.pickImage(source: ImageSource.gallery);
@@ -497,40 +326,19 @@ Future<bool> _requestStoragePermission() async {
       _analysisHeight = result['height'] as int;
     });
   }
+
+  Future<ui.Image> _decodeToUiImage(Uint8List bytes) async {
+    final completer = Completer<ui.Image>();
+    ui.decodeImageFromList(bytes, (ui.Image img) {
+      completer.complete(img);
+    });
+    return completer.future;
+  }
 }
 
-/*clase comparepainter*/
-/// Función auxiliar para calcular el ángulo entre tres puntos A, B (vértice) y C
-/// Función auxiliar para calcular el ángulo entre tres puntos A, B (vértice) y C
-double computeAngle(Offset A, Offset B, Offset C) {
-  final BA = A - B;
-  final BC = C - B;
-  final dot = BA.dx * BC.dx + BA.dy * BC.dy;
-  final magBA = BA.distance;
-  final magBC = BC.distance;
-  if (magBA == 0 || magBC == 0) return 0.0;
-  final cosAngle = dot / (magBA * magBC);
-  final clamped = cosAngle.clamp(-1.0, 1.0);
-  final angleRad = math.acos(clamped);
-  return angleRad * 180 / math.pi;
-}
-
-/// Transforma un punto [pt] aplicando rotación y flips alrededor del centro [center].
-Offset transformPoint(
-    Offset pt, Offset center, double rad, bool flipH, bool flipV) {
-  // Traslada al origen
-  final x0 = pt.dx - center.dx;
-  final y0 = pt.dy - center.dy;
-  // Aplica rotación
-  final x1 = x0 * math.cos(rad) - y0 * math.sin(rad);
-  final y1 = x0 * math.sin(rad) + y0 * math.cos(rad);
-  // Aplica flip
-  final x2 = flipH ? -x1 : x1;
-  final y2 = flipV ? -y1 : y1;
-  // Vuelve a trasladar
-  return Offset(x2 + center.dx, y2 + center.dy);
-}
-
+/// --------------------------------------------------------------------------
+/// PINTOR: Dibuja la pose de análisis y la pose de referencia transformada
+/// --------------------------------------------------------------------------
 class ComparePosesPainter extends CustomPainter {
   final ui.Image analysisImage;
   final Map<String, Map<String, double>> analysisPose;
@@ -543,16 +351,11 @@ class ComparePosesPainter extends CustomPainter {
 
   final Color refColor;
   final Color analysisColor;
-  final String anchorKeypoint;
-  final bool fitContain;
 
-  // Parámetros para transformar la pose (rotación y flip)
+  final bool fitContain;
   final double rotationDeg;
   final bool flipH;
   final bool flipV;
-
-  // Nuevo parámetro para el texto de los ángulos
-  final Color angleTextColor;
 
   ComparePosesPainter({
     required this.analysisImage,
@@ -564,120 +367,107 @@ class ComparePosesPainter extends CustomPainter {
     required this.refHeight,
     required this.refColor,
     required this.analysisColor,
-    required this.anchorKeypoint,
     this.fitContain = true,
     this.rotationDeg = 0.0,
     this.flipH = false,
     this.flipV = false,
-    this.angleTextColor = Colors.white,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
     if (fitContain) {
-      final scale =
-          math.min(size.width / analysisWidth, size.height / analysisHeight);
+      final scale = math.min(
+        size.width / analysisWidth,
+        size.height / analysisHeight,
+      );
       final dx = (size.width - analysisWidth * scale) / 2;
       final dy = (size.height - analysisHeight * scale) / 2;
+
       canvas.save();
       canvas.translate(dx, dy);
       canvas.scale(scale, scale);
       canvas.drawImage(analysisImage, Offset.zero, Paint());
-      _drawTransformedPoses(
-          canvas, analysisWidth.toDouble(), analysisHeight.toDouble());
+
+      _drawTransformedPoses(canvas,
+          imageWidth: analysisWidth.toDouble(),
+          imageHeight: analysisHeight.toDouble());
       canvas.restore();
     } else {
       canvas.drawImage(analysisImage, Offset.zero, Paint());
-      _drawTransformedPoses(
-          canvas, analysisWidth.toDouble(), analysisHeight.toDouble());
+      _drawTransformedPoses(canvas,
+          imageWidth: analysisWidth.toDouble(),
+          imageHeight: analysisHeight.toDouble());
     }
   }
 
-  void _drawTransformedPoses(Canvas canvas, double w, double h) {
-    // Escalar la pose de referencia (si existe) al espacio de la imagen de análisis
-    Map<String, Map<String, double>>? scaledRefPose;
+  void _drawTransformedPoses(Canvas canvas,
+      {required double imageWidth, required double imageHeight}) {
+    Map<String, Map<String, double>>? finalRefPose;
     if (referencePose != null) {
-      scaledRefPose = _scalePose(referencePose!, refWidth, refHeight, w, h);
-    }
-    final scaledAnalysisPose = analysisPose;
+      // Seleccionamos la muñeca más cercana (con la heurística)
+      final refFacingLeft = isFacingLeft(referencePose!);
+      final refWrist = pickClosestWrist(referencePose!, refFacingLeft);
+      // Usamos ambos tobillos (sin filtrar) de la referencia
+      final refLeftAnkle = 'leftAnkle';
+      final refRightAnkle = 'rightAnkle';
 
-    // Alinear la pose de referencia con la de análisis usando el keypoint ancla
-    if (scaledRefPose != null &&
-        scaledRefPose.containsKey(anchorKeypoint) &&
-        scaledAnalysisPose.containsKey(anchorKeypoint)) {
-      final rx = scaledRefPose[anchorKeypoint]!['x']!;
-      final ry = scaledRefPose[anchorKeypoint]!['y']!;
-      final ax = scaledAnalysisPose[anchorKeypoint]!['x']!;
-      final ay = scaledAnalysisPose[anchorKeypoint]!['y']!;
-      final shiftX = ax - rx;
-      final shiftY = ay - ry;
-      scaledRefPose = _shiftPose(scaledRefPose, shiftX, shiftY);
+      // Para la pose de análisis, usamos la misma lógica para la muñeca
+      final anFacingLeft = isFacingLeft(analysisPose);
+      final anWrist = pickClosestWrist(analysisPose, anFacingLeft);
+      // Y tomamos ambos tobillos de la pose de análisis
+      final anLeftAnkle = 'leftAnkle';
+      final anRightAnkle = 'rightAnkle';
+
+      // Calculamos la transformación afín usando tres puntos:
+      // [wrist, leftAnkle, rightAnkle]
+      finalRefPose = affineTransformRefPoseByThreePoints(
+        refPose: referencePose!,
+        srcAnchors: {
+          'wrist': Offset(referencePose![refWrist]!['x']!,
+              referencePose![refWrist]!['y']!),
+          'leftAnkle': Offset(referencePose!['leftAnkle']!['x']!,
+              referencePose!['leftAnkle']!['y']!),
+          'rightAnkle': Offset(referencePose!['rightAnkle']!['x']!,
+              referencePose!['rightAnkle']!['y']!),
+        },
+        dstAnchors: {
+          'wrist': Offset(analysisPose[anWrist]!['x']!,
+              analysisPose[anWrist]!['y']!),
+          'leftAnkle': Offset(analysisPose['leftAnkle']!['x']!,
+              analysisPose['leftAnkle']!['y']!),
+          'rightAnkle': Offset(analysisPose['rightAnkle']!['x']!,
+              analysisPose['rightAnkle']!['y']!),
+        },
+      );
     }
 
-    // Guardamos el canvas y aplicamos la transformación a los keypoints
     canvas.save();
-    final cx = w / 2;
-    final cy = h / 2;
-    canvas.translate(cx, cy);
+    final cx = imageWidth / 2;
+    final cy = imageHeight / 2;
     final rad = rotationDeg * math.pi / 180.0;
+    canvas.translate(cx, cy);
     canvas.rotate(rad);
     if (flipH) canvas.scale(-1, 1);
     if (flipV) canvas.scale(1, -1);
     canvas.translate(-cx, -cy);
 
-    // Dibujar las poses transformadas
-    _drawPose(canvas, scaledAnalysisPose, analysisColor, strokeWidth: 3);
-    if (scaledRefPose != null) {
-      _drawPose(canvas, scaledRefPose, refColor.withOpacity(0.8),
+    _drawPose(canvas, analysisPose, analysisColor, strokeWidth: 3);
+    if (finalRefPose != null) {
+      _drawPose(canvas, finalRefPose, refColor.withOpacity(0.8),
           strokeWidth: 4);
     }
-    // Recuperamos la transformación aplicada para los keypoints
     canvas.restore();
-
-    // Ahora, dibujamos los ángulos en modo "upright", sin rotación ni flip.
-    // Para ello, usamos la misma transformación pero la invertimos para el texto.
-    _drawAnglesGlobal(canvas, w, h, rad, flipH, flipV);
   }
 
-  Map<String, Map<String, double>> _scalePose(
-    Map<String, Map<String, double>> pose,
-    double wSrc,
-    double hSrc,
-    double wDst,
-    double hDst,
-  ) {
-    if (wSrc == 0 || hSrc == 0) return pose;
-    final scaleX = wDst / wSrc;
-    final scaleY = hDst / hSrc;
-    final Map<String, Map<String, double>> scaled = {};
-    pose.forEach((kp, val) {
-      scaled[kp] = {
-        'x': val['x']! * scaleX,
-        'y': val['y']! * scaleY,
-      };
-    });
-    return scaled;
-  }
-
-  Map<String, Map<String, double>> _shiftPose(
-      Map<String, Map<String, double>> pose, double shiftX, double shiftY) {
-    final Map<String, Map<String, double>> shifted = {};
-    pose.forEach((kp, val) {
-      shifted[kp] = {
-        'x': val['x']! + shiftX,
-        'y': val['y']! + shiftY,
-      };
-    });
-    return shifted;
-  }
-
-  void _drawPose(
-      Canvas canvas, Map<String, Map<String, double>> pose, Color color,
-      {double strokeWidth = 3}) {
+  void _drawPose(Canvas canvas, Map<String, Map<String, double>> pose,
+      Color color, {
+    double strokeWidth = 3,
+  }) {
     final linePaint = Paint()
       ..color = color
       ..strokeWidth = strokeWidth;
     final circlePaint = Paint()..color = color;
+
     const bonePairs = [
       ['leftShoulder', 'rightShoulder'],
       ['leftShoulder', 'leftHip'],
@@ -692,25 +482,19 @@ class ComparePosesPainter extends CustomPainter {
       ['rightHip', 'rightKnee'],
       ['rightKnee', 'rightAnkle'],
     ];
+
     void drawLine(String kp1, String kp2) {
       if (!pose.containsKey(kp1) || !pose.containsKey(kp2)) return;
       final p1 = pose[kp1]!;
       final p2 = pose[kp2]!;
       canvas.drawLine(
-        Offset(p1['x']!, p1['y']!),
-        Offset(p2['x']!, p2['y']!),
-        linePaint,
-      );
+          Offset(p1['x']!, p1['y']!), Offset(p2['x']!, p2['y']!), linePaint);
     }
 
     void drawPoint(String kp) {
       if (!pose.containsKey(kp)) return;
       final p = pose[kp]!;
-      canvas.drawCircle(
-        Offset(p['x']!, p['y']!),
-        5,
-        circlePaint,
-      );
+      canvas.drawCircle(Offset(p['x']!, p['y']!), 5, circlePaint);
     }
 
     for (var pair in bonePairs) {
@@ -721,87 +505,139 @@ class ComparePosesPainter extends CustomPainter {
     }
   }
 
-  /// Dibuja los ángulos en modo global (sin la rotación/flip) usando
-  /// la transformación inversa para que el texto aparezca upright.
-  void _drawAnglesGlobal(
-      Canvas canvas, double w, double h, double rad, bool flipH, bool flipV) {
-    // Para cada ángulo que nos interese, calculamos la posición global del vértice
-    // usando la misma transformación aplicada a los keypoints, pero sin ella en el dibujo.
-    // Por ejemplo, para la cadera izquierda: entre leftShoulder, leftHip, leftKnee.
-    // Y para la rodilla izquierda: entre leftHip, leftKnee, leftAnkle.
-    // Puedes extender esto a otros ángulos.
-
-    // Definimos el centro de la imagen (en el espacio de dibujo: w x h)
-    final center = Offset(w / 2, h / 2);
-    // Preparamos el texto (bold, mayor tamaño)
-    final textStyle = ui.TextStyle(
-      color: angleTextColor,
-      fontSize: 18,
-      fontWeight: FontWeight.bold,
-    );
-
-    // Función para transformar un punto del sistema original usando la transformación aplicada
-    Offset transformPoint(Offset pt) {
-      // Traslada al centro
-      final x0 = pt.dx - center.dx;
-      final y0 = pt.dy - center.dy;
-      // Aplica rotación
-      final x1 = x0 * math.cos(rad) - y0 * math.sin(rad);
-      final y1 = x0 * math.sin(rad) + y0 * math.cos(rad);
-      // Aplica flip si corresponde
-      final x2 = flipH ? -x1 : x1;
-      final y2 = flipV ? -y1 : y1;
-      // Vuelve a trasladar
-      return Offset(x2 + center.dx, y2 + center.dy);
-    }
-
-    // Para dibujar el ángulo en forma upright, calculamos la posición global del vértice (B) y luego
-    // dibujamos el texto sin transformación.
-    // Ejemplo para ángulo de cadera izquierda (entre leftShoulder, leftHip, leftKnee)
-    if (analysisPose.containsKey('leftShoulder') &&
-        analysisPose.containsKey('leftHip') &&
-        analysisPose.containsKey('leftKnee')) {
-      final A = Offset(analysisPose['leftShoulder']!['x']!,
-          analysisPose['leftShoulder']!['y']!);
-      final B = Offset(
-          analysisPose['leftHip']!['x']!, analysisPose['leftHip']!['y']!);
-      final C = Offset(
-          analysisPose['leftKnee']!['x']!, analysisPose['leftKnee']!['y']!);
-      final angle = computeAngle(A, B, C);
-      final para = _buildParagraph('${angle.toStringAsFixed(1)}°', textStyle);
-      // Transformamos B para obtener su posición global en la imagen dibujada
-      final globalB = transformPoint(B);
-      canvas.drawParagraph(para, globalB);
-    }
-
-    // Ejemplo para ángulo de rodilla izquierda (entre leftHip, leftKnee, leftAnkle)
-    if (analysisPose.containsKey('leftHip') &&
-        analysisPose.containsKey('leftKnee') &&
-        analysisPose.containsKey('leftAnkle')) {
-      final A = Offset(
-          analysisPose['leftHip']!['x']!, analysisPose['leftHip']!['y']!);
-      final B = Offset(
-          analysisPose['leftKnee']!['x']!, analysisPose['leftKnee']!['y']!);
-      final C = Offset(
-          analysisPose['leftAnkle']!['x']!, analysisPose['leftAnkle']!['y']!);
-      final angle = computeAngle(A, B, C);
-      final para = _buildParagraph('${angle.toStringAsFixed(1)}°', textStyle);
-      final globalB = transformPoint(B);
-      canvas.drawParagraph(para, globalB);
-    }
-  }
-
-  ui.Paragraph _buildParagraph(String text, ui.TextStyle style) {
-    final paragraphStyle =
-        ui.ParagraphStyle(textAlign: TextAlign.center, maxLines: 1);
-    final builder = ui.ParagraphBuilder(paragraphStyle)
-      ..pushStyle(style)
-      ..addText(text);
-    final paragraph = builder.build();
-    paragraph.layout(ui.ParagraphConstraints(width: 60));
-    return paragraph;
-  }
-
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+}
+
+/// --------------------------------------------------------------------------
+/// FUNCIONES AUXILIARES PARA SELECCIÓN DE PUNTOS
+/// --------------------------------------------------------------------------
+
+bool isFacingLeft(Map<String, Map<String, double>> pose) {
+  if (!pose.containsKey('leftHip') || !pose.containsKey('rightHip')) {
+    return false;
+  }
+  final lx = pose['leftHip']!['x']!;
+  final rx = pose['rightHip']!['x']!;
+  return (lx < rx);
+}
+
+String pickClosestWrist(Map<String, Map<String, double>> pose, bool facingLeft) {
+  if (!pose.containsKey('leftWrist') || !pose.containsKey('rightWrist')) {
+    return 'rightWrist'; // fallback
+  }
+  final lwx = pose['leftWrist']!['x']!;
+  final rwx = pose['rightWrist']!['x']!;
+  if (facingLeft) {
+    return (lwx < rwx) ? 'leftWrist' : 'rightWrist';
+  } else {
+    return (lwx > rwx) ? 'leftWrist' : 'rightWrist';
+  }
+}
+
+/// --------------------------------------------------------------------------
+/// FUNCIONES DE TRANSFORMACIÓN AFÍN (TRES PUNTOS)
+/// --------------------------------------------------------------------------
+
+/// Calcula la matriz afín 2x3 que transforma tres puntos fuente (src) en tres
+/// puntos destino (dst). La matriz tendrá la forma:
+/// [ [a, b, c],
+///   [d, e, f] ]
+List<List<double>> computeAffineTransformMatrix(
+    List<Offset> src, List<Offset> dst) {
+  final x1 = src[0].dx, y1 = src[0].dy;
+  final x2 = src[1].dx, y2 = src[1].dy;
+  final x3 = src[2].dx, y3 = src[2].dy;
+
+  // Matriz de src: 3x3
+  // | x1  y1  1 |
+  // | x2  y2  1 |
+  // | x3  y3  1 |
+  final det = x1 * (y2 - y3) -
+      y1 * (x2 - x3) +
+      (x2 * y3 - x3 * y2);
+
+  if (det == 0) {
+    // Si es 0, no se puede invertir: devolvemos la transformación identidad
+    return [
+      [1, 0, 0],
+      [0, 1, 0]
+    ];
+  }
+
+  // Calculamos la matriz inversa de la matriz src.
+  final m11 = (y2 - y3);
+  final m12 = (x3 - x2);
+  final m13 = (x2 * y3 - x3 * y2);
+
+  final m21 = (y3 - y1);
+  final m22 = (x1 - x3);
+  final m23 = (x3 * y1 - x1 * y3);
+
+  final m31 = (y1 - y2);
+  final m32 = (x2 - x1);
+  final m33 = (x1 * y2 - x2 * y1);
+
+  // Para los parámetros a, b, c de la primera fila:
+  final a = (m11 * dst[0].dx + m21 * dst[1].dx + m31 * dst[2].dx) / det;
+  final b = (m12 * dst[0].dx + m22 * dst[1].dx + m32 * dst[2].dx) / det;
+  final c = (m13 * dst[0].dx + m23 * dst[1].dx + m33 * dst[2].dx) / det;
+
+  // Para la segunda fila: d, e, f
+  final d = (m11 * dst[0].dy + m21 * dst[1].dy + m31 * dst[2].dy) / det;
+  final e = (m12 * dst[0].dy + m22 * dst[1].dy + m32 * dst[2].dy) / det;
+  final f = (m13 * dst[0].dy + m23 * dst[1].dy + m33 * dst[2].dy) / det;
+
+  return [
+    [a, b, c],
+    [d, e, f]
+  ];
+}
+
+/// Aplica la matriz afín a un punto (x, y)
+Offset applyAffineTransform(Offset pt, List<List<double>> matrix) {
+  final a = matrix[0][0];
+  final b = matrix[0][1];
+  final c = matrix[0][2];
+  final d = matrix[1][0];
+  final e = matrix[1][1];
+  final f = matrix[1][2];
+
+  final newX = a * pt.dx + b * pt.dy + c;
+  final newY = d * pt.dx + e * pt.dy + f;
+  return Offset(newX, newY);
+}
+
+/// Transforma la pose de referencia usando tres puntos de anclaje:
+/// - Fuente (refPose): [wrist, leftAnkle, rightAnkle]
+/// - Destino (analysisPose): [wrist, leftAnkle, rightAnkle]
+///
+/// Devuelve una nueva pose con la transformación afín aplicada.
+Map<String, Map<String, double>> affineTransformRefPoseByThreePoints({
+  required Map<String, Map<String, double>> refPose,
+  required Map<String, Offset> srcAnchors, // Ej: {'wrist': ..., 'leftAnkle': ..., 'rightAnkle': ...}
+  required Map<String, Offset> dstAnchors, // Ej: {'wrist': ..., 'leftAnkle': ..., 'rightAnkle': ...}
+}) {
+  // Construir listas de puntos (en el mismo orden)
+  final List<Offset> srcPoints = [
+    srcAnchors['wrist']!,
+    srcAnchors['leftAnkle']!,
+    srcAnchors['rightAnkle']!,
+  ];
+  final List<Offset> dstPoints = [
+    dstAnchors['wrist']!,
+    dstAnchors['leftAnkle']!,
+    dstAnchors['rightAnkle']!,
+  ];
+
+  final matrix = computeAffineTransformMatrix(srcPoints, dstPoints);
+
+  final Map<String, Map<String, double>> newPose = {};
+  refPose.forEach((kp, coords) {
+    final pt = Offset(coords['x']!, coords['y']!);
+    final transformed = applyAffineTransform(pt, matrix);
+    newPose[kp] = {'x': transformed.dx, 'y': transformed.dy};
+  });
+
+  return newPose;
 }

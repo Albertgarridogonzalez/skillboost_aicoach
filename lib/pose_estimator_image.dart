@@ -137,6 +137,12 @@ class PoseEstimatorimage {
       };
     }
 
+    // Eliminamos los keypoints que no queremos mostrar: nariz y orejas
+    poseMap.remove('nose');
+    poseMap.remove('leftEar');
+    poseMap.remove('rightEar');
+    poseMap.remove('leftEye');
+
     return poseMap;
   }
 
