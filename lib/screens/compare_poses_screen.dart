@@ -9,6 +9,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:skillboost_aicoach/drawing_utils.dart';
 
 // Importa tu modelo o clase de detección de pose
 import '../pose_estimator_image.dart';
@@ -47,6 +48,7 @@ class _ComparePosesScreenState extends State<ComparePosesScreen> {
         children: [
           _buildButtonsRow(),
           Expanded(child: _buildBody()),
+          _buildAnglesText(),
           _buildColorPickers(),
           SizedBox(height: 10),
           ElevatedButton(
@@ -61,22 +63,83 @@ class _ComparePosesScreenState extends State<ComparePosesScreen> {
 
   // Botones para seleccionar imágenes
   Widget _buildButtonsRow() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        ElevatedButton(
+  return Row(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+      Container(
+        width: 160, // Ajusta el ancho según necesites
+        child: ElevatedButton(
           onPressed: _pickReferenceImage,
-          child: Text('Seleccionar Imagen de Referencia'),
+          child: Text('Img Referencia'),
         ),
-        SizedBox(width: 20),
-        ElevatedButton(
+      ),
+      SizedBox(width: 10),
+      Container(
+        width: 160, // Ajusta el ancho según necesites
+        child: ElevatedButton(
           onPressed: _pickAnalysisImage,
-          child: Text('Seleccionar Imagen a Analizar'),
+          child: Text('Img Análisis'),
+        ),
+      ),
+    ],
+  );
+}
+Widget _buildAnglesText() {
+  if (_analysisPose == null) return SizedBox();
+  // Calculamos los ángulos para Análisis y Referencia (si está disponible)
+  final analysisAngles = DrawingUtils.computeSelectedAngles(_analysisPose!);
+  final refAngles = _refPose != null
+      ? DrawingUtils.computeSelectedAngles(_refPose!)
+      : {};
+
+  // Creamos dos columnas: una para "Referencia" y otra para "Análisis"
+  return Container(
+    padding: EdgeInsets.all(8),
+    color: Colors.white.withOpacity(0.8), // fondo para mejorar legibilidad
+    child: Row(
+      children: [
+        // Columna izquierda: Referencia
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text("Referencia:",
+                  style: TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black)),
+              Text("Cadera Izq: ${refAngles['Cadera Izquierda']?.toStringAsFixed(1) ?? '-'}°",
+                  style: TextStyle(fontSize: 16, color: Colors.black)),
+              Text("Cadera Der: ${refAngles['Cadera Derecha']?.toStringAsFixed(1) ?? '-'}°",
+                  style: TextStyle(fontSize: 16, color: Colors.black)),
+              Text("Rodilla Izq: ${refAngles['Rodilla Izquierda']?.toStringAsFixed(1) ?? '-'}°",
+                  style: TextStyle(fontSize: 16, color: Colors.black)),
+              Text("Rodilla Der: ${refAngles['Rodilla Derecha']?.toStringAsFixed(1) ?? '-'}°",
+                  style: TextStyle(fontSize: 16, color: Colors.black)),
+            ],
+          ),
+        ),
+        // Columna derecha: Análisis
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text("Análisis:",
+                  style: TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black)),
+              Text("Cadera Izq: ${analysisAngles['Cadera Izquierda']?.toStringAsFixed(1) ?? '-'}°",
+                  style: TextStyle(fontSize: 16, color: Colors.black)),
+              Text("Cadera Der: ${analysisAngles['Cadera Derecha']?.toStringAsFixed(1) ?? '-'}°",
+                  style: TextStyle(fontSize: 16, color: Colors.black)),
+              Text("Rodilla Izq: ${analysisAngles['Rodilla Izquierda']?.toStringAsFixed(1) ?? '-'}°",
+                  style: TextStyle(fontSize: 16, color: Colors.black)),
+              Text("Rodilla Der: ${analysisAngles['Rodilla Derecha']?.toStringAsFixed(1) ?? '-'}°",
+                  style: TextStyle(fontSize: 16, color: Colors.black)),
+            ],
+          ),
         ),
       ],
-    );
-  }
-
+    ),
+  );
+}
   // Cuerpo: muestra la imagen de análisis con ambas poses sobrepuestas
   Widget _buildBody() {
     if (_analysisBytes == null || _analysisPose == null) {
@@ -93,6 +156,7 @@ class _ComparePosesScreenState extends State<ComparePosesScreen> {
           minScale: 0.5,
           maxScale: 5.0,
           child: CustomPaint(
+            // En pantalla mostramos overlays (líneas y círculos)
             painter: ComparePosesPainter(
               analysisImage: uiImage,
               analysisPose: _analysisPose!,
@@ -107,6 +171,7 @@ class _ComparePosesScreenState extends State<ComparePosesScreen> {
               rotationDeg: -90,
               flipH: true,
               flipV: false,
+              drawOverlays: true,
             ),
             size: Size(
               MediaQuery.of(context).size.width,
@@ -233,37 +298,101 @@ class _ComparePosesScreenState extends State<ComparePosesScreen> {
   }
 
   Future<ui.Image> _buildAnnotatedImage() async {
-    final uiImage = await _decodeToUiImage(_analysisBytes!);
-    final extraHeight = 150;
-    final finalWidth = _analysisWidth.toDouble();
-    final finalHeight = _analysisHeight.toDouble() + extraHeight;
+  final uiImage = await _decodeToUiImage(_analysisBytes!);
+  // Altura extra para el bloque de texto
+  final extraHeight = 150;
+  final finalWidth = _analysisWidth.toDouble();
+  final finalHeight = _analysisHeight.toDouble() + extraHeight.toDouble();
 
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(
-      recorder,
-      Rect.fromLTWH(0, 0, finalWidth, finalHeight),
-    );
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, finalWidth, finalHeight));
 
-    final painter = ComparePosesPainter(
-      analysisImage: uiImage,
-      analysisPose: _analysisPose!,
-      analysisWidth: _analysisWidth,
-      analysisHeight: _analysisHeight,
-      referencePose: _refPose,
-      refWidth: _refWidth.toDouble(),
-      refHeight: _refHeight.toDouble(),
-      refColor: _refColor,
-      analysisColor: _analysisColor,
-      fitContain: false,
-      rotationDeg: 0,
-      flipH: false,
-      flipV: false,
-    );
-    painter.paint(canvas, Size(finalWidth, _analysisHeight.toDouble()));
+  // Dibuja la imagen base sin overlays
+  final painter = ComparePosesPainter(
+    analysisImage: uiImage,
+    analysisPose: _analysisPose!,
+    analysisWidth: _analysisWidth,
+    analysisHeight: _analysisHeight,
+    referencePose: _refPose,
+    refWidth: _refWidth.toDouble(),
+    refHeight: _refHeight.toDouble(),
+    refColor: _refColor,
+    analysisColor: _analysisColor,
+    fitContain: false,
+    rotationDeg: 0,
+    flipH: false,
+    flipV: false,
+    drawOverlays: false,
+  );
+  painter.paint(canvas, Size(finalWidth, _analysisHeight.toDouble()));
 
-    final picture = recorder.endRecording();
-    return picture.toImage(finalWidth.toInt(), finalHeight.toInt());
-  }
+  // Calculamos los ángulos de cadera y rodilla para cada pose
+  final analysisAngles = computeSelectedAngles(_analysisPose!);
+  final refAngles = _refPose != null ? computeSelectedAngles(_refPose!) : {};
+
+  // Imprime en consola para verificar
+  print("Ángulos análisis: $analysisAngles");
+  print("Ángulos referencia: $refAngles");
+
+  // Creamos dos bloques de texto: uno para "Referencia" y otro para "Análisis"
+  final refText = StringBuffer()..writeln("Referencia:");
+  refText.writeln("Cadera Izq: ${refAngles['Cadera Izquierda']?.toStringAsFixed(1) ?? '-'}°");
+  refText.writeln("Cadera Der: ${refAngles['Cadera Derecha']?.toStringAsFixed(1) ?? '-'}°");
+  refText.writeln("Rodilla Izq: ${refAngles['Rodilla Izquierda']?.toStringAsFixed(1) ?? '-'}°");
+  refText.writeln("Rodilla Der: ${refAngles['Rodilla Derecha']?.toStringAsFixed(1) ?? '-'}°");
+
+  final analysisText = StringBuffer()..writeln("Análisis:");
+  analysisText.writeln("Cadera Izq: ${analysisAngles['Cadera Izquierda']?.toStringAsFixed(1) ?? '-'}°");
+  analysisText.writeln("Cadera Der: ${analysisAngles['Cadera Derecha']?.toStringAsFixed(1) ?? '-'}°");
+  analysisText.writeln("Rodilla Izq: ${analysisAngles['Rodilla Izquierda']?.toStringAsFixed(1) ?? '-'}°");
+  analysisText.writeln("Rodilla Der: ${analysisAngles['Rodilla Derecha']?.toStringAsFixed(1) ?? '-'}°");
+
+  // Configuramos el estilo del texto y el ancho para cada columna
+  final textStyle = ui.TextStyle(
+    color: Colors.black, // Prueba con negro o cambia a otro color si es necesario
+    fontSize: 18,
+    fontWeight: FontWeight.bold,
+  );
+  final paragraphStyle = ui.ParagraphStyle(textAlign: TextAlign.left);
+  final double columnWidth = finalWidth / 2 - 20;
+
+  final refParagraphBuilder = ui.ParagraphBuilder(paragraphStyle)
+    ..pushStyle(textStyle)
+    ..addText(refText.toString());
+  final refParagraph = refParagraphBuilder.build();
+  refParagraph.layout(ui.ParagraphConstraints(width: columnWidth));
+
+  final analysisParagraphBuilder = ui.ParagraphBuilder(paragraphStyle)
+    ..pushStyle(textStyle)
+    ..addText(analysisText.toString());
+  final analysisParagraph = analysisParagraphBuilder.build();
+  analysisParagraph.layout(ui.ParagraphConstraints(width: columnWidth));
+
+  // (Opcional) Dibujar un fondo semitransparente para el bloque de texto
+  final backgroundPaint = Paint()..color = Colors.white.withOpacity(0.7);
+  canvas.drawRect(Rect.fromLTWH(0, _analysisHeight.toDouble(), finalWidth, extraHeight.toDouble()), backgroundPaint);
+
+  // DESCOMENTA ESTA PARTE PARA PROBAR CON TEXTO FIJO:
+  /*
+  final testText = "Prueba de texto";
+  final testParagraphBuilder = ui.ParagraphBuilder(paragraphStyle)
+    ..pushStyle(textStyle)
+    ..addText(testText);
+  final testParagraph = testParagraphBuilder.build();
+  testParagraph.layout(ui.ParagraphConstraints(width: columnWidth));
+  canvas.drawParagraph(testParagraph, Offset(10, _analysisHeight.toDouble() + 10));
+  */
+
+  // Dibujamos los párrafos en la parte inferior de la imagen
+  final double textY = _analysisHeight.toDouble() + 10;
+  canvas.drawParagraph(refParagraph, Offset(10, textY));
+  canvas.drawParagraph(analysisParagraph, Offset(finalWidth / 2 + 10, textY));
+
+  final picture = recorder.endRecording();
+  return picture.toImage(finalWidth.toInt(), finalHeight.toInt());
+}
+
+
 
   Future<Directory> _getDownloadDirectory() async {
     final Directory? extDir = await getExternalStorageDirectory();
@@ -356,6 +485,8 @@ class ComparePosesPainter extends CustomPainter {
   final double rotationDeg;
   final bool flipH;
   final bool flipV;
+  // Nuevo parámetro para decidir si se dibujan los overlays (líneas y puntos)
+  final bool drawOverlays;
 
   ComparePosesPainter({
     required this.analysisImage,
@@ -371,6 +502,7 @@ class ComparePosesPainter extends CustomPainter {
     this.rotationDeg = 0.0,
     this.flipH = false,
     this.flipV = false,
+    this.drawOverlays = true,
   });
 
   @override
@@ -404,40 +536,10 @@ class ComparePosesPainter extends CustomPainter {
       {required double imageWidth, required double imageHeight}) {
     Map<String, Map<String, double>>? finalRefPose;
     if (referencePose != null) {
-      // Seleccionamos la muñeca más cercana (con la heurística)
-      final refFacingLeft = isFacingLeft(referencePose!);
-      final refWrist = pickClosestWrist(referencePose!, refFacingLeft);
-      // Usamos ambos tobillos (sin filtrar) de la referencia
-      final refLeftAnkle = 'leftAnkle';
-      final refRightAnkle = 'rightAnkle';
-
-      // Para la pose de análisis, usamos la misma lógica para la muñeca
-      final anFacingLeft = isFacingLeft(analysisPose);
-      final anWrist = pickClosestWrist(analysisPose, anFacingLeft);
-      // Y tomamos ambos tobillos de la pose de análisis
-      final anLeftAnkle = 'leftAnkle';
-      final anRightAnkle = 'rightAnkle';
-
-      // Calculamos la transformación afín usando tres puntos:
-      // [wrist, leftAnkle, rightAnkle]
-      finalRefPose = affineTransformRefPoseByThreePoints(
+      // Usamos ambos tobillos y ambas muñecas como anclaje
+      finalRefPose = similarityTransformRefPose(
         refPose: referencePose!,
-        srcAnchors: {
-          'wrist': Offset(referencePose![refWrist]!['x']!,
-              referencePose![refWrist]!['y']!),
-          'leftAnkle': Offset(referencePose!['leftAnkle']!['x']!,
-              referencePose!['leftAnkle']!['y']!),
-          'rightAnkle': Offset(referencePose!['rightAnkle']!['x']!,
-              referencePose!['rightAnkle']!['y']!),
-        },
-        dstAnchors: {
-          'wrist': Offset(analysisPose[anWrist]!['x']!,
-              analysisPose[anWrist]!['y']!),
-          'leftAnkle': Offset(analysisPose['leftAnkle']!['x']!,
-              analysisPose['leftAnkle']!['y']!),
-          'rightAnkle': Offset(analysisPose['rightAnkle']!['x']!,
-              analysisPose['rightAnkle']!['y']!),
-        },
+        dstPose: analysisPose,
       );
     }
 
@@ -451,21 +553,18 @@ class ComparePosesPainter extends CustomPainter {
     if (flipV) canvas.scale(1, -1);
     canvas.translate(-cx, -cy);
 
-    _drawPose(canvas, analysisPose, analysisColor, strokeWidth: 3);
-    if (finalRefPose != null) {
-      _drawPose(canvas, finalRefPose, refColor.withOpacity(0.8),
-          strokeWidth: 4);
+    if (drawOverlays) {
+      _drawPose(canvas, analysisPose, analysisColor, strokeWidth: 3);
+      if (finalRefPose != null) {
+        _drawPose(canvas, finalRefPose, refColor.withOpacity(0.8), strokeWidth: 4);
+      }
     }
     canvas.restore();
   }
 
-  void _drawPose(Canvas canvas, Map<String, Map<String, double>> pose,
-      Color color, {
-    double strokeWidth = 3,
-  }) {
-    final linePaint = Paint()
-      ..color = color
-      ..strokeWidth = strokeWidth;
+  void _drawPose(Canvas canvas, Map<String, Map<String, double>> pose, Color color,
+      {double strokeWidth = 3}) {
+    final linePaint = Paint()..color = color..strokeWidth = strokeWidth;
     final circlePaint = Paint()..color = color;
 
     const bonePairs = [
@@ -510,7 +609,81 @@ class ComparePosesPainter extends CustomPainter {
 }
 
 /// --------------------------------------------------------------------------
-/// FUNCIONES AUXILIARES PARA SELECCIÓN DE PUNTOS
+/// FUNCIONES AUXILIARES PARA LA TRANSFORMACIÓN DE SIMILITUD
+/// --------------------------------------------------------------------------
+
+/// Calcula una transformación de similitud (traslación, rotación y escala uniformes)
+/// que alinea los cuatro keypoints: leftWrist, rightWrist, leftAnkle y rightAnkle
+/// de la pose de referencia con los correspondientes en la pose de destino.
+/// Calcula una transformación de similitud (traslación, rotación y escala uniformes)
+/// que alinea los tres keypoints: rightWrist, leftAnkle y rightAnkle
+/// de la pose de referencia con los correspondientes en la pose de destino.
+Map<String, Map<String, double>> similarityTransformRefPose({
+  required Map<String, Map<String, double>> refPose,
+  required Map<String, Map<String, double>> dstPose,
+}) {
+  // Extraemos los tres keypoints de la pose de referencia:
+  // Usamos rightWrist (siempre) y ambos tobillos.
+  List<ui.Offset> src = [
+    ui.Offset(refPose['rightWrist']!['x']!, refPose['rightWrist']!['y']!),
+    ui.Offset(refPose['leftAnkle']!['x']!, refPose['leftAnkle']!['y']!),
+    ui.Offset(refPose['rightAnkle']!['x']!, refPose['rightAnkle']!['y']!),
+  ];
+  // Y de la pose de destino, usamos los mismos keypoints.
+  List<ui.Offset> dst = [
+    ui.Offset(dstPose['rightWrist']!['x']!, dstPose['rightWrist']!['y']!),
+    ui.Offset(dstPose['leftAnkle']!['x']!, dstPose['leftAnkle']!['y']!),
+    ui.Offset(dstPose['rightAnkle']!['x']!, dstPose['rightAnkle']!['y']!),
+  ];
+
+  // Calculamos los centroides de cada conjunto.
+  ui.Offset centroidSrc = ui.Offset(0, 0);
+  ui.Offset centroidDst = ui.Offset(0, 0);
+  for (var pt in src) {
+    centroidSrc = ui.Offset(centroidSrc.dx + pt.dx, centroidSrc.dy + pt.dy);
+  }
+  for (var pt in dst) {
+    centroidDst = ui.Offset(centroidDst.dx + pt.dx, centroidDst.dy + pt.dy);
+  }
+  centroidSrc = ui.Offset(centroidSrc.dx / src.length, centroidSrc.dy / src.length);
+  centroidDst = ui.Offset(centroidDst.dx / dst.length, centroidDst.dy / dst.length);
+
+  // Centramos los puntos.
+  List<ui.Offset> srcCentered = src.map((pt) => pt - centroidSrc).toList();
+  List<ui.Offset> dstCentered = dst.map((pt) => pt - centroidDst).toList();
+
+  double A = 0, B = 0, normSrc = 0;
+  for (int i = 0; i < srcCentered.length; i++) {
+    A += srcCentered[i].dx * dstCentered[i].dx + srcCentered[i].dy * dstCentered[i].dy;
+    B += srcCentered[i].dx * dstCentered[i].dy - srcCentered[i].dy * dstCentered[i].dx;
+    normSrc += srcCentered[i].dx * srcCentered[i].dx + srcCentered[i].dy * srcCentered[i].dy;
+  }
+  double theta = math.atan2(B, A);
+  double scale = (A * math.cos(theta) + B * math.sin(theta)) / normSrc;
+
+  // Calculamos la traslación.
+  double cosTheta = math.cos(theta);
+  double sinTheta = math.sin(theta);
+  ui.Offset t = centroidDst - ui.Offset(
+      scale * (cosTheta * centroidSrc.dx - sinTheta * centroidSrc.dy),
+      scale * (sinTheta * centroidSrc.dx + cosTheta * centroidSrc.dy)
+  );
+
+  // Aplicamos la transformación a todos los keypoints de refPose.
+  Map<String, Map<String, double>> newPose = {};
+  refPose.forEach((kp, coords) {
+    double x = coords['x']!;
+    double y = coords['y']!;
+    double newX = scale * (cosTheta * x - sinTheta * y) + t.dx;
+    double newY = scale * (sinTheta * x + cosTheta * y) + t.dy;
+    newPose[kp] = {'x': newX, 'y': newY};
+  });
+
+  return newPose;
+}
+
+/// --------------------------------------------------------------------------
+/// FUNCIONES AUXILIARES (otras ya existentes)
 /// --------------------------------------------------------------------------
 
 bool isFacingLeft(Map<String, Map<String, double>> pose) {
@@ -522,103 +695,12 @@ bool isFacingLeft(Map<String, Map<String, double>> pose) {
   return (lx < rx);
 }
 
-String pickClosestWrist(Map<String, Map<String, double>> pose, bool facingLeft) {
-  if (!pose.containsKey('leftWrist') || !pose.containsKey('rightWrist')) {
-    return 'rightWrist'; // fallback
-  }
-  final lwx = pose['leftWrist']!['x']!;
-  final rwx = pose['rightWrist']!['x']!;
-  if (facingLeft) {
-    return (lwx < rwx) ? 'leftWrist' : 'rightWrist';
-  } else {
-    return (lwx > rwx) ? 'leftWrist' : 'rightWrist';
-  }
-}
-
-/// --------------------------------------------------------------------------
-/// FUNCIONES DE TRANSFORMACIÓN AFÍN (TRES PUNTOS)
-/// --------------------------------------------------------------------------
-
-/// Calcula la matriz afín 2x3 que transforma tres puntos fuente (src) en tres
-/// puntos destino (dst). La matriz tendrá la forma:
-/// [ [a, b, c],
-///   [d, e, f] ]
-List<List<double>> computeAffineTransformMatrix(
-    List<Offset> src, List<Offset> dst) {
-  final x1 = src[0].dx, y1 = src[0].dy;
-  final x2 = src[1].dx, y2 = src[1].dy;
-  final x3 = src[2].dx, y3 = src[2].dy;
-
-  // Matriz de src: 3x3
-  // | x1  y1  1 |
-  // | x2  y2  1 |
-  // | x3  y3  1 |
-  final det = x1 * (y2 - y3) -
-      y1 * (x2 - x3) +
-      (x2 * y3 - x3 * y2);
-
-  if (det == 0) {
-    // Si es 0, no se puede invertir: devolvemos la transformación identidad
-    return [
-      [1, 0, 0],
-      [0, 1, 0]
-    ];
-  }
-
-  // Calculamos la matriz inversa de la matriz src.
-  final m11 = (y2 - y3);
-  final m12 = (x3 - x2);
-  final m13 = (x2 * y3 - x3 * y2);
-
-  final m21 = (y3 - y1);
-  final m22 = (x1 - x3);
-  final m23 = (x3 * y1 - x1 * y3);
-
-  final m31 = (y1 - y2);
-  final m32 = (x2 - x1);
-  final m33 = (x1 * y2 - x2 * y1);
-
-  // Para los parámetros a, b, c de la primera fila:
-  final a = (m11 * dst[0].dx + m21 * dst[1].dx + m31 * dst[2].dx) / det;
-  final b = (m12 * dst[0].dx + m22 * dst[1].dx + m32 * dst[2].dx) / det;
-  final c = (m13 * dst[0].dx + m23 * dst[1].dx + m33 * dst[2].dx) / det;
-
-  // Para la segunda fila: d, e, f
-  final d = (m11 * dst[0].dy + m21 * dst[1].dy + m31 * dst[2].dy) / det;
-  final e = (m12 * dst[0].dy + m22 * dst[1].dy + m32 * dst[2].dy) / det;
-  final f = (m13 * dst[0].dy + m23 * dst[1].dy + m33 * dst[2].dy) / det;
-
-  return [
-    [a, b, c],
-    [d, e, f]
-  ];
-}
-
-/// Aplica la matriz afín a un punto (x, y)
-Offset applyAffineTransform(Offset pt, List<List<double>> matrix) {
-  final a = matrix[0][0];
-  final b = matrix[0][1];
-  final c = matrix[0][2];
-  final d = matrix[1][0];
-  final e = matrix[1][1];
-  final f = matrix[1][2];
-
-  final newX = a * pt.dx + b * pt.dy + c;
-  final newY = d * pt.dx + e * pt.dy + f;
-  return Offset(newX, newY);
-}
-
-/// Transforma la pose de referencia usando tres puntos de anclaje:
-/// - Fuente (refPose): [wrist, leftAnkle, rightAnkle]
-/// - Destino (analysisPose): [wrist, leftAnkle, rightAnkle]
-///
-/// Devuelve una nueva pose con la transformación afín aplicada.
+/// (Opcional) Transformación afín por tres puntos (se deja como referencia)
 Map<String, Map<String, double>> affineTransformRefPoseByThreePoints({
   required Map<String, Map<String, double>> refPose,
-  required Map<String, Offset> srcAnchors, // Ej: {'wrist': ..., 'leftAnkle': ..., 'rightAnkle': ...}
-  required Map<String, Offset> dstAnchors, // Ej: {'wrist': ..., 'leftAnkle': ..., 'rightAnkle': ...}
+  required Map<String, Offset> srcAnchors,
+  required Map<String, Offset> dstAnchors,
 }) {
-  // Construir listas de puntos (en el mismo orden)
   final List<Offset> srcPoints = [
     srcAnchors['wrist']!,
     srcAnchors['leftAnkle']!,
@@ -640,4 +722,113 @@ Map<String, Map<String, double>> affineTransformRefPoseByThreePoints({
   });
 
   return newPose;
+}
+
+/// Calcula la matriz afín 2x3 que transforma tres puntos fuente en tres puntos destino.
+List<List<double>> computeAffineTransformMatrix(List<Offset> src, List<Offset> dst) {
+  final x1 = src[0].dx, y1 = src[0].dy;
+  final x2 = src[1].dx, y2 = src[1].dy;
+  final x3 = src[2].dx, y3 = src[2].dy;
+
+  final det = x1 * (y2 - y3) - y1 * (x2 - x3) + (x2 * y3 - x3 * y2);
+  if (det == 0) {
+    return [
+      [1, 0, 0],
+      [0, 1, 0]
+    ];
+  }
+
+  final m11 = (y2 - y3);
+  final m12 = (x3 - x2);
+  final m13 = (x2 * y3 - x3 * y2);
+
+  final m21 = (y3 - y1);
+  final m22 = (x1 - x3);
+  final m23 = (x3 * y1 - x1 * y3);
+
+  final m31 = (y1 - y2);
+  final m32 = (x2 - x1);
+  final m33 = (x1 * y2 - x2 * y1);
+
+  final a = (m11 * dst[0].dx + m21 * dst[1].dx + m31 * dst[2].dx) / det;
+  final b = (m12 * dst[0].dx + m22 * dst[1].dx + m32 * dst[2].dx) / det;
+  final c = (m13 * dst[0].dx + m23 * dst[1].dx + m33 * dst[2].dx) / det;
+  final d = (m11 * dst[0].dy + m21 * dst[1].dy + m31 * dst[2].dy) / det;
+  final e = (m12 * dst[0].dy + m22 * dst[1].dy + m32 * dst[2].dy) / det;
+  final f = (m13 * dst[0].dy + m23 * dst[1].dy + m33 * dst[2].dy) / det;
+
+  return [
+    [a, b, c],
+    [d, e, f]
+  ];
+}
+
+/// Aplica la matriz afín a un punto (x, y)
+Offset applyAffineTransform(Offset pt, List<List<double>> matrix) {
+  final newX = matrix[0][0] * pt.dx + matrix[0][1] * pt.dy + matrix[0][2];
+  final newY = matrix[1][0] * pt.dx + matrix[1][1] * pt.dy + matrix[1][2];
+  return Offset(newX, newY);
+}
+
+/// --------------------------------------------------------------------------
+/// FUNCIONES PARA CALCULAR ÁNGULOS (CADERA Y RODILLA)
+/// --------------------------------------------------------------------------
+/// Calcula el ángulo entre tres puntos A, B (vértice) y C (en grados)
+double computeAngle(Offset A, Offset B, Offset C) {
+  final BA = A - B;
+  final BC = C - B;
+  final dot = BA.dx * BC.dx + BA.dy * BC.dy;
+  final magBA = BA.distance;
+  final magBC = BC.distance;
+  if (magBA == 0 || magBC == 0) return 0.0;
+  final cosAngle = dot / (magBA * magBC);
+  final clamped = cosAngle.clamp(-1.0, 1.0);
+  final angleRad = math.acos(clamped);
+  return angleRad * 180 / math.pi;
+}
+
+/// Calcula los ángulos de la cadera y de la rodilla para cada lado
+Map<String, double> computeSelectedAngles(Map<String, Map<String, double>> pose) {
+  Map<String, double> angles = {};
+  // Ángulo de cadera izquierda: entre leftShoulder, leftHip, leftKnee
+  if (pose.containsKey('leftShoulder') &&
+      pose.containsKey('leftHip') &&
+      pose.containsKey('leftKnee')) {
+    angles['Cadera Izquierda'] = computeAngle(
+      Offset(pose['leftShoulder']!['x']!, pose['leftShoulder']!['y']!),
+      Offset(pose['leftHip']!['x']!, pose['leftHip']!['y']!),
+      Offset(pose['leftKnee']!['x']!, pose['leftKnee']!['y']!),
+    );
+  }
+  // Ángulo de cadera derecha: entre rightShoulder, rightHip, rightKnee
+  if (pose.containsKey('rightShoulder') &&
+      pose.containsKey('rightHip') &&
+      pose.containsKey('rightKnee')) {
+    angles['Cadera Derecha'] = computeAngle(
+      Offset(pose['rightShoulder']!['x']!, pose['rightShoulder']!['y']!),
+      Offset(pose['rightHip']!['x']!, pose['rightHip']!['y']!),
+      Offset(pose['rightKnee']!['x']!, pose['rightKnee']!['y']!),
+    );
+  }
+  // Ángulo de rodilla izquierda: entre leftHip, leftKnee, leftAnkle
+  if (pose.containsKey('leftHip') &&
+      pose.containsKey('leftKnee') &&
+      pose.containsKey('leftAnkle')) {
+    angles['Rodilla Izquierda'] = computeAngle(
+      Offset(pose['leftHip']!['x']!, pose['leftHip']!['y']!),
+      Offset(pose['leftKnee']!['x']!, pose['leftKnee']!['y']!),
+      Offset(pose['leftAnkle']!['x']!, pose['leftAnkle']!['y']!),
+    );
+  }
+  // Ángulo de rodilla derecha: entre rightHip, rightKnee, rightAnkle
+  if (pose.containsKey('rightHip') &&
+      pose.containsKey('rightKnee') &&
+      pose.containsKey('rightAnkle')) {
+    angles['Rodilla Derecha'] = computeAngle(
+      Offset(pose['rightHip']!['x']!, pose['rightHip']!['y']!),
+      Offset(pose['rightKnee']!['x']!, pose['rightKnee']!['y']!),
+      Offset(pose['rightAnkle']!['x']!, pose['rightAnkle']!['y']!),
+    );
+  }
+  return angles;
 }

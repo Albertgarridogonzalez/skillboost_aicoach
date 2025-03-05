@@ -1,10 +1,11 @@
 import 'dart:typed_data';
 import 'dart:math' as math;
 import 'package:image/image.dart' as img;
+import 'dart:ui' as ui; // Usamos ui.Offset
 
 class DrawingUtils {
-  /// Dibuja líneas y puntos sobre la misma imagen (en memoria) que le pasamos.
-  /// Se asume que las coordenadas en poseData ya están en píxeles de esa imagen.
+  /// Dibuja líneas y puntos sobre la imagen (en memoria) a partir de los keypoints.
+  /// (Este método se deja casi sin cambios; lo usamos para anotar la imagen si se desea).
   static Future<Uint8List> annotateImage(
     Uint8List originalBytes,
     Map<String, dynamic> poseData,
@@ -15,11 +16,6 @@ class DrawingUtils {
       print("No se pudo decodificar la imagen en annotateImage");
       return originalBytes;
     }
-
-    // Imprimimos dimensiones de la imagen donde se va a dibujar
-    print(
-        "annotateImage -> width: ${originalImage.width}, height: ${originalImage.height}");
-
     // Se asume que poseData['x'] y poseData['y'] ya están en la escala de la imagen original.
     final Map<String, Map<String, double>> points = {};
     poseData.forEach((key, value) {
@@ -104,71 +100,85 @@ class DrawingUtils {
       }
     }
 
-    // Dibujar los puntos de la pose principal
+    // Dibujar los puntos
     for (var kp in points.keys) {
       drawPoint(kp);
     }
-
-    // Dibujar los puntos de la pose de referencia (si existe)
     if (referencePose != null) {
       for (var kp in referencePoints.keys) {
         drawPoint(kp, isRef: true);
       }
     }
 
-    // Codificamos la imagen final con los dibujos
+    // Codificamos y retornamos la imagen final
     final annotatedBytes = img.encodeJpg(originalImage);
     return Uint8List.fromList(annotatedBytes);
   }
 
-  /// Calcula el ángulo entre tres keypoints A, B, C (B es el vértice).
-  static double computeAngle(
-      String A, String B, String C, Map<String, Map<String, double>> points) {
-    if (!points.containsKey(A) ||
-        !points.containsKey(B) ||
-        !points.containsKey(C)) {
-      return 0.0;
-    }
-
-    final ax = points[A]!['x']!;
-    final ay = points[A]!['y']!;
-    final bx = points[B]!['x']!;
-    final by = points[B]!['y']!;
-    final cx = points[C]!['x']!;
-    final cy = points[C]!['y']!;
-
-    final bax = ax - bx;
-    final bay = ay - by;
-    final bcx = cx - bx;
-    final bcy = cy - by;
-
-    final dot = (bax * bcx) + (bay * bcy);
-    final magBA = math.sqrt(bax * bax + bay * bay);
-    final magBC = math.sqrt(bcx * bcx + bcy * bcy);
+  /// Calcula el ángulo entre tres puntos A, B (vértice) y C (en grados).
+  static double computeAngle(ui.Offset A, ui.Offset B, ui.Offset C) {
+    final BA = A - B;
+    final BC = C - B;
+    final dot = BA.dx * BC.dx + BA.dy * BC.dy;
+    final magBA = BA.distance;
+    final magBC = BC.distance;
     if (magBA == 0 || magBC == 0) return 0.0;
-
     final cosAngle = dot / (magBA * magBC);
-    final clamped = cosAngle.clamp(-1.0, 1.0) as double;
+    final clamped = cosAngle.clamp(-1.0, 1.0);
     final angleRad = math.acos(clamped);
-    return angleRad * (180.0 / math.pi);
+    return angleRad * 180 / math.pi;
   }
 
-  /// (Opcional) Traslada la pose para anclarla a la cadera, etc.
-  static Map<String, Map<String, double>> translateToHip(
-    Map<String, Map<String, double>> points,
-    String hipName,
-  ) {
-    if (!points.containsKey(hipName)) return points;
-    final hipX = points[hipName]!['x']!;
-    final hipY = points[hipName]!['y']!;
+  /// Calcula y devuelve los ángulos de la cadera y de la rodilla para cada lado.
+  ///
+  /// Las claves devueltas son:
+  /// - "Cadera Izquierda": ángulo entre leftShoulder, leftHip y leftKnee.
+  /// - "Cadera Derecha": ángulo entre rightShoulder, rightHip y rightKnee.
+  /// - "Rodilla Izquierda": ángulo entre leftHip, leftKnee y leftAnkle.
+  /// - "Rodilla Derecha": ángulo entre rightHip, rightKnee y rightAnkle.
+  static Map<String, double> computeSelectedAngles(Map<String, Map<String, double>> pose) {
+    Map<String, double> angles = {};
 
-    final Map<String, Map<String, double>> translated = {};
-    points.forEach((key, val) {
-      translated[key] = {
-        'x': val['x']! - hipX,
-        'y': val['y']! - hipY,
-      };
-    });
-    return translated;
+    if (pose.containsKey('leftShoulder') &&
+        pose.containsKey('leftHip') &&
+        pose.containsKey('leftKnee')) {
+      angles['Cadera Izquierda'] = computeAngle(
+        ui.Offset(pose['leftShoulder']!['x']!, pose['leftShoulder']!['y']!),
+        ui.Offset(pose['leftHip']!['x']!, pose['leftHip']!['y']!),
+        ui.Offset(pose['leftKnee']!['x']!, pose['leftKnee']!['y']!),
+      );
+    }
+
+    if (pose.containsKey('rightShoulder') &&
+        pose.containsKey('rightHip') &&
+        pose.containsKey('rightKnee')) {
+      angles['Cadera Derecha'] = computeAngle(
+        ui.Offset(pose['rightShoulder']!['x']!, pose['rightShoulder']!['y']!),
+        ui.Offset(pose['rightHip']!['x']!, pose['rightHip']!['y']!),
+        ui.Offset(pose['rightKnee']!['x']!, pose['rightKnee']!['y']!),
+      );
+    }
+
+    if (pose.containsKey('leftHip') &&
+        pose.containsKey('leftKnee') &&
+        pose.containsKey('leftAnkle')) {
+      angles['Rodilla Izquierda'] = computeAngle(
+        ui.Offset(pose['leftHip']!['x']!, pose['leftHip']!['y']!),
+        ui.Offset(pose['leftKnee']!['x']!, pose['leftKnee']!['y']!),
+        ui.Offset(pose['leftAnkle']!['x']!, pose['leftAnkle']!['y']!),
+      );
+    }
+
+    if (pose.containsKey('rightHip') &&
+        pose.containsKey('rightKnee') &&
+        pose.containsKey('rightAnkle')) {
+      angles['Rodilla Derecha'] = computeAngle(
+        ui.Offset(pose['rightHip']!['x']!, pose['rightHip']!['y']!),
+        ui.Offset(pose['rightKnee']!['x']!, pose['rightKnee']!['y']!),
+        ui.Offset(pose['rightAnkle']!['x']!, pose['rightAnkle']!['y']!),
+      );
+    }
+
+    return angles;
   }
 }
