@@ -1,10 +1,8 @@
+// home_screen.dart
 import 'package:flutter/material.dart';
 import 'package:skillboost_aicoach/checkstorage.dart';
 import 'package:skillboost_aicoach/screens/compare_poses_screen.dart';
-import 'video_picker_screen.dart';
-//import 'image_picker_screen.dart';
-// Importa la nueva pantalla de pruebas
-import 'image_screen.dart';
+import 'package:skillboost_aicoach/screens/live_pose_analysis_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -18,34 +16,13 @@ class HomeScreen extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             ElevatedButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => VideoPickerScreen()),
-                );
-              },
-              child: Text('Analizador de Video'),
-            ),
-            SizedBox(height: 20),
-            //ElevatedButton(
-            //  onPressed: () {
-            //    Navigator.push(
-            //      context,
-            //      MaterialPageRoute(builder: (context) => ImagePickerScreen()),
-            //    );
-            //  },
-            //  child: Text('Seleccionar Imagen'),
-            //),
-            SizedBox(height: 20),
-            // NUEVO BOTÓN: Test de pose en una sola imagen
-            ElevatedButton(
               onPressed: () async {
                 bool permisoConcedido = await checkStoragePermission(context);
-              if (permisoConcedido) {
-                print("✅ Permiso listo para usar almacenamiento.");
-              } else {
-                print("❌ Permiso denegado.");
-              }
+                if (permisoConcedido) {
+                  print("✅ Permiso listo para usar almacenamiento.");
+                } else {
+                  print("❌ Permiso denegado.");
+                }
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (context) => ComparePosesScreen()),
@@ -53,12 +30,25 @@ class HomeScreen extends StatelessWidget {
               },
               child: Text('Analizador de imagen'),
             ),
+            SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () async {
+                bool permisoConcedido = await checkStoragePermission(context);
+                if (permisoConcedido) {
+                  print("✅ Permiso listo para usar cámara y almacenamiento.");
+                } else {
+                  print("❌ Permiso denegado.");
+                }
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => LivePoseAnalysisScreen()),
+                );
+              },
+              child: Text('Analizador en vivo'),
+            ),
           ],
         ),
       ),
     );
   }
-}
-
-ImagePickerScreen() {
 }

@@ -26,10 +26,10 @@ class PoseEstimatorimage {
     }
   }
 
-  /// Lee el File, hornea la orientación EXIF en los píxeles (bakeOrientation),
-  /// corre la inferencia y devuelve:
+  /// Procesa un File (imagen de galería), hornea la orientación (bakeOrientation),
+  /// ejecuta la inferencia y devuelve:
   /// {
-  ///   'image': img.Image (ya físicamente en la orientación correcta),
+  ///   'image': img.Image (en la orientación correcta),
   ///   'pose': { 'nose':{'x':..,'y':..,'score':..}, ... },
   ///   'width': int,
   ///   'height': int
@@ -38,23 +38,18 @@ class PoseEstimatorimage {
     await _initInterpreter();
     if (_interpreter == null) return null;
 
-    // 1) Leer bytes y decodificar
     final bytes = await file.readAsBytes();
     final decoded = img.decodeImage(bytes);
     if (decoded == null) return null;
 
-    // 2) Hornear la orientación: gira físicamente la imagen si el EXIF dice que está rotada
     final oriented = img.bakeOrientation(decoded);
-    print("Oriented image: ${oriented.width} x ${oriented.height} (bakeOrientation aplicado)");
     final origW = oriented.width;
     final origH = oriented.height;
     print("Oriented image: $origW x $origH (bakeOrientation aplicado)");
 
-    // 3) Corre la inferencia (letterbox + run) sobre la imagen ya reorientada
     final poseMap = _runInferenceOnImage(oriented);
     if (poseMap == null) return null;
 
-    // Devolvemos la imagen reorientada y la pose
     return {
       'image': oriented,
       'pose': poseMap,
@@ -63,7 +58,31 @@ class PoseEstimatorimage {
     };
   }
 
-  /// Hace la inferencia en la imagen reorientada: letterbox, buildInput, run, remap coords
+  /// Procesa la imagen en vivo a partir de los bytes (por ejemplo, JPEG) obtenidos de la cámara.
+  /// Se decodifica la imagen, se hornea la orientación y se ejecuta la inferencia.
+  static Future<Map<String, dynamic>?> detectPoseFromCameraImage(Uint8List bytes) async {
+    await _initInterpreter();
+    if (_interpreter == null) return null;
+
+    final decoded = img.decodeImage(bytes);
+    if (decoded == null) return null;
+
+    // Si la imagen ya viene orientada correctamente, se puede omitir bakeOrientation.
+    final oriented = img.bakeOrientation(decoded);
+    final origW = oriented.width;
+    final origH = oriented.height;
+
+    final poseMap = _runInferenceOnImage(oriented);
+    if (poseMap == null) return null;
+
+    return {
+      'pose': poseMap,
+      'width': origW,
+      'height': origH,
+    };
+  }
+
+  /// Ejecuta la inferencia sobre la imagen reorientada: letterbox, buildInput, run, remapea coordenadas.
   static Map<String, Map<String, double>>? _runInferenceOnImage(img.Image oriented) {
     if (_interpreter == null) return null;
 
@@ -82,7 +101,7 @@ class PoseEstimatorimage {
     final offsetX = letterboxData['offsetX'] as int;
     final offsetY = letterboxData['offsetY'] as int;
 
-    // 3) Build input
+    // 3) Construir tensor de entrada
     final inputTensor = _buildInput(letterboxImage, targetW, targetH);
 
     // 4) Output buffer
@@ -97,10 +116,10 @@ class PoseEstimatorimage {
       ),
     );
 
-    // 5) Run
+    // 5) Ejecutar la inferencia
     _interpreter!.run(inputTensor, output);
 
-    // 6) Keypoint names
+    // 6) Nombres de keypoints
     final keypointNames = [
       'nose', 'leftEye', 'rightEye', 'leftEar', 'rightEar',
       'leftShoulder', 'rightShoulder', 'leftElbow', 'rightElbow',
@@ -108,16 +127,12 @@ class PoseEstimatorimage {
       'leftKnee', 'rightKnee', 'leftAnkle', 'rightAnkle'
     ];
 
-    // 7) Remap coords
+    // 7) Remapear coordenadas
     final poseMap = <String, Map<String, double>>{};
     for (int i = 0; i < keypointNames.length; i++) {
       final xNorm = output[0][0][i][0];
       final yNorm = output[0][0][i][1];
       final score = output[0][0][i][2];
-
-      if (score < scoreThreshold) {
-        // filtrar si quieres
-      }
 
       final px = xNorm * targetW;
       final py = yNorm * targetH;
@@ -137,7 +152,7 @@ class PoseEstimatorimage {
       };
     }
 
-    // Eliminamos los keypoints que no queremos mostrar: nariz y orejas
+    // Eliminamos keypoints que no queremos mostrar (por ejemplo, nariz y orejas)
     poseMap.remove('nose');
     poseMap.remove('leftEar');
     poseMap.remove('rightEar');
@@ -147,8 +162,7 @@ class PoseEstimatorimage {
   }
 
   /// Aplica letterbox a la imagen [src] para adaptarla al tamaño [targetW, targetH].
-  static Map<String, dynamic> _letterboxAndResize(
-      img.Image src, int targetW, int targetH) {
+  static Map<String, dynamic> _letterboxAndResize(img.Image src, int targetW, int targetH) {
     final origW = src.width;
     final origH = src.height;
     final ratio = math.min(targetW / origW, targetH / origH);
@@ -165,7 +179,6 @@ class PoseEstimatorimage {
     }
 
     final resized = img.copyResize(src, width: newW, height: newH);
-
     final offX = ((targetW - newW) / 2).round();
     final offY = ((targetH - newH) / 2).round();
 
@@ -201,7 +214,6 @@ class PoseEstimatorimage {
         )
       ];
     } else {
-      // float => normalizamos
       return [
         List.generate(
           targetH,
