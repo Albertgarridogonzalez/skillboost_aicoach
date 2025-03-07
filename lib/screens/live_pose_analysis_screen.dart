@@ -30,15 +30,19 @@ class _LivePoseAnalysisScreenState extends State<LivePoseAnalysisScreen> {
   // Cámara actual (frontal o trasera)
   CameraLensDirection _currentLens = CameraLensDirection.front;
 
-  // Último frame procesado
-  Uint8List? _latestFrameBytes;
+  // Dimensiones de la imagen procesada
   int _analysisWidth = 0;
   int _analysisHeight = 0;
 
-  // Pose detectada en vivo
+  // Pose en vivo (y suavizada)
   Map<String, Map<String, double>>? _livePose;
+  Map<String, Map<String, double>>? _previousPose;
 
-  // Imagen y pose de referencia seleccionada
+  // Limitador de FPS
+  DateTime? _lastProcessedTime;
+  final int _processingIntervalMs = 100; // ~10 fps
+
+  // Pose de referencia (opcional)
   Uint8List? _refBytes;
   Map<String, Map<String, double>>? _refPose;
   int _refWidth = 0;
@@ -60,9 +64,9 @@ class _LivePoseAnalysisScreenState extends State<LivePoseAnalysisScreen> {
     super.dispose();
   }
 
+  /// Inicializa la cámara.
   Future<void> _initializeCamera() async {
     final cameras = await availableCameras();
-    // Selecciona la cámara según _currentLens
     final CameraDescription selectedCamera = cameras.firstWhere(
       (camera) => camera.lensDirection == _currentLens,
       orElse: () => cameras.first,
@@ -74,39 +78,53 @@ class _LivePoseAnalysisScreenState extends State<LivePoseAnalysisScreen> {
       enableAudio: false,
     );
 
-    await _cameraController?.initialize();
+    await _cameraController!.initialize();
     if (!mounted) return;
 
     setState(() {
       _isCameraInitialized = true;
-      _analysisWidth =
-          _cameraController!.value.previewSize?.width.toInt() ?? 0;
-      _analysisHeight =
-          _cameraController!.value.previewSize?.height.toInt() ?? 0;
+      _analysisWidth = _cameraController!.value.previewSize?.width.toInt() ?? 0;
+      _analysisHeight = _cameraController!.value.previewSize?.height.toInt() ?? 0;
     });
 
-    // Inicia el stream de imágenes para análisis en vivo.
+    // Inicia el stream de imágenes para análisis.
     _cameraController!.startImageStream(_processCameraImage);
   }
 
+  /// Procesa cada frame de la cámara.
   Future<void> _processCameraImage(CameraImage image) async {
+    final currentTime = DateTime.now();
+    if (_lastProcessedTime != null &&
+        currentTime.difference(_lastProcessedTime!).inMilliseconds <
+            _processingIntervalMs) {
+      return;
+    }
+    _lastProcessedTime = currentTime;
+
     if (_isProcessingFrame) return;
     _isProcessingFrame = true;
 
     try {
-      // Convierte CameraImage (YUV420) a Uint8List JPEG
-      Uint8List bytes = await convertCameraImageToUint8List(image);
-      _latestFrameBytes = bytes;
+      // 1) Convierte CameraImage (YUV420) a JPEG
+      Uint8List bytes = await _convertCameraImageToUint8List(image);
 
-      // Detecta la pose en la imagen convertida
+      // 2) Detecta la pose
       final result = await PoseEstimatorimage.detectPoseFromCameraImage(bytes);
       if (result != null) {
+        Map<String, Map<String, double>> detectedPose =
+            (result['pose'] as Map?)?.cast<String, Map<String, double>>() ?? {};
+
+        // 3) Suavizado
+        if (_previousPose != null) {
+          detectedPose = _smoothPose(_previousPose!, detectedPose, 0.8);
+        }
+
         setState(() {
-          _livePose =
-              (result['pose'] as Map?)?.cast<String, Map<String, double>>();
+          _livePose = detectedPose;
           _analysisWidth = result['width'] as int;
           _analysisHeight = result['height'] as int;
         });
+        _previousPose = detectedPose;
       }
     } catch (e) {
       print("Error procesando frame: $e");
@@ -115,27 +133,29 @@ class _LivePoseAnalysisScreenState extends State<LivePoseAnalysisScreen> {
     }
   }
 
-  /// Convierte un CameraImage (formato YUV420) a una imagen JPEG en Uint8List.
-  Future<Uint8List> convertCameraImageToUint8List(CameraImage image) async {
-    final int width = image.width;
-    final int height = image.height;
-    final int uvRowStride = image.planes[1].bytesPerRow;
-    final int uvPixelStride = image.planes[1].bytesPerPixel!;
+  /// Convierte un CameraImage (YUV420) a JPEG
+  Future<Uint8List> _convertCameraImageToUint8List(CameraImage image) async {
+    final width = image.width;
+    final height = image.height;
+    final uvRowStride = image.planes[1].bytesPerRow;
+    final uvPixelStride = image.planes[1].bytesPerPixel!;
 
-    // Crea una imagen vacía usando el paquete 'image'
-    var imgImage = img.Image(width: width, height: height);
+    final imgImage = img.Image(width: width, height: height);
 
     for (int y = 0; y < height; y++) {
-      final int uvRow = uvRowStride * (y >> 1);
+      final uvRow = uvRowStride * (y >> 1);
       for (int x = 0; x < width; x++) {
-        final int uvPixel = uvRow + (x >> 1) * uvPixelStride;
-        final int index = y * width + x;
-        final int yVal = image.planes[0].bytes[index];
-        final int uVal = image.planes[1].bytes[uvPixel];
-        final int vVal = image.planes[2].bytes[uvPixel];
+        final uvPixel = uvRow + (x >> 1) * uvPixelStride;
+        final index = y * width + x;
+        final yVal = image.planes[0].bytes[index];
+        final uVal = image.planes[1].bytes[uvPixel];
+        final vVal = image.planes[2].bytes[uvPixel];
 
         int r = (yVal + (1.370705 * (vVal - 128))).round();
-        int g = (yVal - (0.337633 * (uVal - 128)) - (0.698001 * (vVal - 128))).round();
+        int g = (yVal -
+                (0.337633 * (uVal - 128)) -
+                (0.698001 * (vVal - 128)))
+            .round();
         int b = (yVal + (1.732446 * (uVal - 128))).round();
         r = r.clamp(0, 255);
         g = g.clamp(0, 255);
@@ -146,6 +166,43 @@ class _LivePoseAnalysisScreenState extends State<LivePoseAnalysisScreen> {
     return Uint8List.fromList(img.encodeJpg(imgImage));
   }
 
+  /// Suaviza la pose para reducir saltos
+  Map<String, Map<String, double>> _smoothPose(
+    Map<String, Map<String, double>> previousPose,
+    Map<String, Map<String, double>> currentPose,
+    double alpha,
+  ) {
+    final result = <String, Map<String, double>>{};
+    currentPose.forEach((key, currentCoords) {
+      if (previousPose.containsKey(key)) {
+        final prevCoords = previousPose[key]!;
+        result[key] = {
+          'x': prevCoords['x']! * alpha + currentCoords['x']! * (1 - alpha),
+          'y': prevCoords['y']! * alpha + currentCoords['y']! * (1 - alpha),
+          'score': currentCoords['score']!,
+        };
+      } else {
+        result[key] = currentCoords;
+      }
+    });
+    return result;
+  }
+
+  /// Cambia entre cámara frontal y trasera
+  Future<void> _switchCamera() async {
+    if (!_isCameraInitialized) return;
+    await _cameraController?.stopImageStream();
+    await _cameraController?.dispose();
+
+    final cameras = await availableCameras();
+    _currentLens = (_currentLens == CameraLensDirection.front)
+        ? CameraLensDirection.back
+        : CameraLensDirection.front;
+
+    _initializeCamera();
+  }
+
+  /// Selecciona una imagen de referencia (opcional)
   Future<void> _pickReferenceImage() async {
     final picker = ImagePicker();
     final picked = await picker.pickImage(source: ImageSource.gallery);
@@ -161,26 +218,10 @@ class _LivePoseAnalysisScreenState extends State<LivePoseAnalysisScreen> {
     final bytes = Uint8List.fromList(img.encodeJpg(orientedImage));
     setState(() {
       _refBytes = bytes;
-      _refPose =
-          (result['pose'] as Map?)?.cast<String, Map<String, double>>();
+      _refPose = (result['pose'] as Map?)?.cast<String, Map<String, double>>();
       _refWidth = result['width'] as int;
       _refHeight = result['height'] as int;
     });
-  }
-
-  /// Cambia entre cámara frontal y trasera.
-  Future<void> _switchCamera() async {
-    if (!_isCameraInitialized) return;
-
-    await _cameraController?.stopImageStream();
-    await _cameraController?.dispose();
-
-    final cameras = await availableCameras();
-    _currentLens = (_currentLens == CameraLensDirection.front)
-        ? CameraLensDirection.back
-        : CameraLensDirection.front;
-
-    _initializeCamera();
   }
 
   @override
@@ -198,7 +239,6 @@ class _LivePoseAnalysisScreenState extends State<LivePoseAnalysisScreen> {
       ),
       body: Column(
         children: [
-          // Vista de cámara en vivo con overlays
           Expanded(
             child: _isCameraInitialized
                 ? Stack(
@@ -220,7 +260,6 @@ class _LivePoseAnalysisScreenState extends State<LivePoseAnalysisScreen> {
                   )
                 : Center(child: CircularProgressIndicator()),
           ),
-          // Botones para seleccionar imagen de referencia y descargar
           Padding(
             padding: const EdgeInsets.all(8.0),
             child: Row(
@@ -245,13 +284,14 @@ class _LivePoseAnalysisScreenState extends State<LivePoseAnalysisScreen> {
   }
 
   Future<void> _onDownloadPressed() async {
-    // Aquí implementarías la lógica para capturar el último frame
-    // con los overlays y guardarlo en el dispositivo.
+    // Aquí tu lógica para guardar la imagen con los overlays
     print("Implementa la función para guardar la imagen anotada.");
   }
 }
 
-/// CustomPainter para dibujar la pose en vivo y la de referencia sobre la vista de cámara.
+/// --------------------------------------------------------------------------
+/// PINTOR: flip horizontal de la pose en vivo y la referencia, luego transform
+/// --------------------------------------------------------------------------
 class _LivePosePainter extends CustomPainter {
   final Map<String, Map<String, double>> livePose;
   final Map<String, Map<String, double>>? referencePose;
@@ -271,27 +311,64 @@ class _LivePosePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Calcula los factores de escala para adaptar las coordenadas
-    double scaleX = size.width / imageWidth;
-    double scaleY = size.height / imageHeight;
+    // 1) Calcula factores de escala
+    final double scaleX = size.width / imageWidth;
+    final double scaleY = size.height / imageHeight;
 
-    _drawPose(canvas, livePose, analysisColor,
+    // 2) Haz flip horizontal a la pose en vivo
+    final flippedAnalysisPose = _flipHorizontalPose(livePose);
+
+    // 3) Dibuja la pose en vivo ya espejada
+    _drawPose(canvas, flippedAnalysisPose, analysisColor,
         scaleX: scaleX, scaleY: scaleY);
+
+    // 4) Si hay pose de referencia, también la espejamos y luego la transformamos
     if (referencePose != null) {
+      final flippedRefPose = _flipHorizontalPose(referencePose!);
+
       final transformedRefPose = similarityTransformRefPose(
-        refPose: referencePose!,
-        dstPose: livePose,
+        refPose: flippedRefPose,
+        dstPose: flippedAnalysisPose,
       );
+
+      // 5) Dibujamos la referencia transformada
       _drawPose(canvas, transformedRefPose, refColor.withOpacity(0.8),
           strokeWidth: 4, scaleX: scaleX, scaleY: scaleY);
     }
   }
 
-  void _drawPose(Canvas canvas, Map<String, Map<String, double>> pose, Color color,
-      {double strokeWidth = 3, required double scaleX, required double scaleY}) {
-    final linePaint = Paint()
-      ..color = color
-      ..strokeWidth = strokeWidth;
+  /// Flip horizontal en torno al bounding box de la pose
+  Map<String, Map<String, double>> _flipHorizontalPose(
+      Map<String, Map<String, double>> pose) {
+    // 1) Calculamos minX y maxX
+    double minX = double.infinity;
+    double maxX = -double.infinity;
+    for (final coords in pose.values) {
+      final x = coords['x']!;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+    }
+    final centerX = (minX + maxX) / 2;
+
+    // 2) Reflejamos cada X
+    final newPose = <String, Map<String, double>>{};
+    pose.forEach((kp, coords) {
+      final oldX = coords['x']!;
+      final oldY = coords['y']!;
+      final score = coords['score'] ?? 0.0;
+      final newX = 2 * centerX - oldX;
+      newPose[kp] = {'x': newX, 'y': oldY, 'score': score};
+    });
+    return newPose;
+  }
+
+  /// Dibuja la pose
+  void _drawPose(Canvas canvas, Map<String, Map<String, double>> pose,
+      Color color,
+      {double strokeWidth = 3,
+      required double scaleX,
+      required double scaleY}) {
+    final linePaint = Paint()..color = color..strokeWidth = strokeWidth;
     final circlePaint = Paint()..color = color;
 
     const bonePairs = [
@@ -324,7 +401,10 @@ class _LivePosePainter extends CustomPainter {
       if (!pose.containsKey(kp)) return;
       final p = pose[kp]!;
       canvas.drawCircle(
-          Offset(p['x']! * scaleX, p['y']! * scaleY), 5, circlePaint);
+        Offset(p['x']! * scaleX, p['y']! * scaleY),
+        5,
+        circlePaint,
+      );
     }
 
     for (var pair in bonePairs) {
